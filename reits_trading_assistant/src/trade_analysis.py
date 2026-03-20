@@ -66,6 +66,12 @@ def summarize_trades(trades_df: pd.DataFrame, holdings_daily: pd.DataFrame = Non
     else:
         daily["position_pct"] = np.nan
 
+    # 仓位变动
+    if daily["position_pct"].notna().any():
+        daily["position_change"] = daily["position_pct"].diff()
+    else:
+        daily["position_change"] = np.nan
+
     # heavy_buy定义: 净买入 > 正净买入的75分位数 (与负净卖出独立计算)
     # heavy_sell定义: 净卖出绝对值 > 负净卖出的75分位数绝对值
     buy_threshold = daily[daily["net_amount"] > 0]["net_amount"].quantile(0.75) if (daily["net_amount"] > 0).any() else 0
@@ -83,79 +89,132 @@ def summarize_trades(trades_df: pd.DataFrame, holdings_daily: pd.DataFrame = Non
 
 def plot_trade_flow(trades_df: pd.DataFrame, index_df: pd.DataFrame):
     """
-    资金流向图 - 全时间范围
-    - 左轴：日交易金额，买入为正（红色），卖出为负（蓝色），同一柱状图
-    - 净买入用散点标识
-    - 检查数据连续性，调整坐标轴确保最高最低点都在图内
+    资金流向图
+    - 左轴：中证REITs指数（加粗折线，强对比度）
+    - 右轴：日交易金额，买入为正（红色），卖出为负（蓝色）
     """
     daily = summarize_trades(trades_df)
     daily["date"] = pd.to_datetime(daily["date"])
-
-    # 获取全量数据（不再限制为最近一个月）
-    # 以基准日为起点
     base_date = pd.to_datetime(config.BASE_DATE)
     daily_filtered = daily[daily["date"] >= base_date].copy()
 
     if daily_filtered.empty:
         return None
 
-    # 准备指数数据
     idx = index_df.copy()
     idx.index = pd.to_datetime(idx.index)
     idx_filtered = idx[idx.index >= base_date]
 
     fig, ax1 = plt.subplots(figsize=(14, 7))
 
-    # 左轴：日交易金额（买入正红色，卖出负蓝色）
-    # 买入
-    buy_data = daily_filtered[daily_filtered["buy_amount"] > 0]
-    ax1.bar(buy_data["date"], buy_data["buy_amount"] / 1e4,
-            color="#d62728", alpha=0.7, width=1, label="买入", zorder=3)
-
-    # 卖出（取负值）
-    sell_data = daily_filtered[daily_filtered["sell_amount"] > 0]
-    ax1.bar(sell_data["date"], -sell_data["sell_amount"] / 1e4,
-            color="#1f77b4", alpha=0.7, width=1, label="卖出", zorder=3)
-
-    ax1.axhline(0, color="black", linewidth=0.8, linestyle="-", zorder=4)
-    ax1.set_ylabel("日交易金额（万元）\n买入+/卖出-", fontsize=11, color="#333")
-
-    # 计算Y轴范围确保所有数据可见
-    max_val = max(daily_filtered["buy_amount"].max() / 1e4, daily_filtered["sell_amount"].max() / 1e4)
-    ax1.set_ylim(-max_val * 1.1, max_val * 1.1)
-
-    # 净买入散点
-    ax1.scatter(daily_filtered["date"], daily_filtered["net_amount"] / 1e4,
-               c="#2ca02c", s=30, alpha=0.6, zorder=5, label="净买入")
-
-    # 右轴：指数
+    # 左轴：指数走势（加粗折线，强对比度）
     if "reits_index" in idx_filtered.columns and not idx_filtered["reits_index"].dropna().empty:
-        ax2 = ax1.twinx()
         idx_clean = idx_filtered["reits_index"].dropna()
-        ax2.plot(idx_clean.index, idx_clean.values,
-                 color="#ff7f0e", linewidth=1.5, label="中证REITs指数", zorder=2)
-        ax2.set_ylabel("中证REITs指数", fontsize=11, color="#ff7f0e")
-        ax2.tick_params(axis='y', labelcolor="#ff7f0e")
-
-        # 确保指数在图内
+        ax1.plot(idx_clean.index, idx_clean.values,
+                 color="#1a1a1a", linewidth=2.5, label="中证REITs指数", zorder=5)
+        ax1.set_ylabel("中证REITs指数", fontsize=11, color="#1a1a1a")
+        ax1.tick_params(axis='y', labelcolor="#1a1a1a")
         idx_min, idx_max = idx_clean.min(), idx_clean.max()
-        ax2.set_ylim(idx_min * 0.95, idx_max * 1.05)
+        idx_range = idx_max - idx_min
+        ax1.set_ylim(idx_min - idx_range * 0.1, idx_max + idx_range * 0.1)
 
-        lines2, labels2 = ax2.get_legend_handles_labels()
-    else:
-        lines2, labels2 = [], []
+    ax1.yaxis.grid(True, alpha=0.3)
+    ax1.set_axisbelow(True)
+
+    # 右轴：买入卖出金额
+    ax2 = ax1.twinx()
+    buy_data = daily_filtered[daily_filtered["buy_amount"] > 0]
+    ax2.bar(buy_data["date"], buy_data["buy_amount"] / 1e4,
+            color="#d62728", alpha=0.6, width=1, label="买入", zorder=3)
+
+    sell_data = daily_filtered[daily_filtered["sell_amount"] > 0]
+    ax2.bar(sell_data["date"], -sell_data["sell_amount"] / 1e4,
+            color="#1f77b4", alpha=0.6, width=1, label="卖出", zorder=3)
+
+    ax2.axhline(0, color="gray", linewidth=0.5, linestyle="-", zorder=2)
+    ax2.set_ylabel("日交易金额（万元）买入+/卖出-", fontsize=11, color="#666")
+    max_val = max(
+        daily_filtered["buy_amount"].max() / 1e4 if not daily_filtered["buy_amount"].empty else 0,
+        daily_filtered["sell_amount"].max() / 1e4 if not daily_filtered["sell_amount"].empty else 0,
+    )
+    if max_val > 0:
+        ax2.set_ylim(-max_val * 1.3, max_val * 1.3)
+    ax2.tick_params(axis='y', labelcolor="#666")
 
     lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=9, ncol=2)
 
     ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     plt.xticks(rotation=30)
-    ax1.set_title(f"资金流向与指数走势（基准日：{base_date.strftime('%Y-%m-%d')}）", fontsize=13, fontweight="bold")
-    ax1.yaxis.grid(True, alpha=0.3)
-    ax1.set_axisbelow(True)
+    ax1.set_title(f"资金流向与指数走势（基准日：{base_date.strftime('%Y-%m-%d')}）",
+                  fontsize=13, fontweight="bold")
 
     plt.tight_layout()
     out_path = os.path.join(config.OUTPUT_FIGURES_DIR, "trade_flow.png")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
+def plot_net_buy_vs_index(trades_df: pd.DataFrame, index_df: pd.DataFrame):
+    """
+    净买入 vs 指数走势图
+    - 左轴：中证REITs指数（加粗折线，强对比度）
+    - 右轴：日净买入金额（柱状图，正=净买入红色，负=净卖出蓝色）
+    """
+    daily = summarize_trades(trades_df)
+    daily["date"] = pd.to_datetime(daily["date"])
+    base_date = pd.to_datetime(config.BASE_DATE)
+    daily_filtered = daily[daily["date"] >= base_date].copy()
+
+    if daily_filtered.empty:
+        return None
+
+    idx = index_df.copy()
+    idx.index = pd.to_datetime(idx.index)
+    idx_filtered = idx[idx.index >= base_date]
+
+    fig, ax1 = plt.subplots(figsize=(14, 7))
+
+    if "reits_index" in idx_filtered.columns and not idx_filtered["reits_index"].dropna().empty:
+        idx_clean = idx_filtered["reits_index"].dropna()
+        ax1.plot(idx_clean.index, idx_clean.values,
+                 color="#1a1a1a", linewidth=2.5, label="中证REITs指数", zorder=5)
+        ax1.set_ylabel("中证REITs指数", fontsize=11, color="#1a1a1a")
+        ax1.tick_params(axis='y', labelcolor="#1a1a1a")
+        idx_min, idx_max = idx_clean.min(), idx_clean.max()
+        idx_range = idx_max - idx_min
+        ax1.set_ylim(idx_min - idx_range * 0.1, idx_max + idx_range * 0.1)
+
+    ax1.yaxis.grid(True, alpha=0.3)
+    ax1.set_axisbelow(True)
+
+    ax2 = ax1.twinx()
+    net = daily_filtered["net_amount"] / 1e4
+    colors = ["#d62728" if v >= 0 else "#1f77b4" for v in net.values]
+    ax2.bar(daily_filtered["date"], net.values, color=colors, alpha=0.6, width=1, zorder=3)
+    ax2.axhline(0, color="gray", linewidth=0.5, linestyle="-", zorder=2)
+    ax2.set_ylabel("日净买入（万元）", fontsize=11, color="#666")
+    ax2.tick_params(axis='y', labelcolor="#666")
+    net_abs_max = net.abs().max()
+    if net_abs_max > 0:
+        ax2.set_ylim(-net_abs_max * 1.3, net_abs_max * 1.3)
+
+    from matplotlib.patches import Patch
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    legend_patches = [Patch(facecolor="#d62728", alpha=0.6, label="净买入"),
+                      Patch(facecolor="#1f77b4", alpha=0.6, label="净卖出")]
+    ax1.legend(lines1 + legend_patches, labels1 + ["净买入", "净卖出"],
+               loc="upper left", fontsize=9, ncol=2)
+
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    plt.xticks(rotation=30)
+    ax1.set_title(f"净买入与指数走势（基准日：{base_date.strftime('%Y-%m-%d')}）",
+                  fontsize=13, fontweight="bold")
+
+    plt.tight_layout()
+    out_path = os.path.join(config.OUTPUT_FIGURES_DIR, "net_buy_vs_index.png")
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out_path
@@ -276,6 +335,9 @@ def save_trade_summary(trades_df: pd.DataFrame, holdings_daily: pd.DataFrame = N
         if "position_pct" in display_df.columns:
             display_df["仓位(%)"] = display_df["position_pct"].apply(lambda x: f"{x*100:.2f}" if pd.notna(x) else "")
             display_df = display_df.drop(columns=["position_pct"])
+        if "position_change" in display_df.columns:
+            display_df["仓位变动(%)"] = display_df["position_change"].apply(lambda x: f"{x*100:+.2f}" if pd.notna(x) else "")
+            display_df = display_df.drop(columns=["position_change"])
         if "position_mv" in display_df.columns:
             display_df["持仓市值(万)"] = display_df["position_mv"].apply(lambda x: f"{x/1e4:.2f}" if pd.notna(x) else "")
             display_df = display_df.drop(columns=["position_mv"])

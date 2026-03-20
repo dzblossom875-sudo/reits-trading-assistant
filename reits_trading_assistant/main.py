@@ -13,9 +13,9 @@ import config  # noqa: 触发目录创建
 
 from src.data_loader import align_and_save, load_holdings_timeseries
 from src.sector_analysis import analyze_sector_trades, plot_sector_performance, plot_sector_rotation_dual, calc_sector_returns
-from src.trade_analysis import plot_trade_flow, plot_sector_rotation, save_trade_summary, plot_position_vs_index, summarize_trades
+from src.trade_analysis import plot_trade_flow, plot_net_buy_vs_index, plot_sector_rotation, save_trade_summary, plot_position_vs_index, summarize_trades
 from src.timing_analysis import analyze_timing, plot_timing_chart, save_timing_result
-from src.performance_analysis import calc_metrics, plot_nav_vs_index, save_performance_summary, calc_metrics_by_period
+from src.performance_analysis import calc_metrics, plot_nav_vs_index, save_performance_summary, calc_metrics_by_period, save_daily_tracking, plot_position_change_vs_index
 from src.allocation_analysis import calc_allocation_bias, calc_sector_allocation_bias, save_allocation_bias
 from src.wind_data_loader import load_reits_prices_with_fallback, load_index_data_with_fallback
 from src.report_generator import generate_report
@@ -109,6 +109,9 @@ def main():
     plot_trade_flow(trades_df, daily_df) if trades_df is not None else None
     print("  已生成: trade_flow.png")
 
+    plot_net_buy_vs_index(trades_df, daily_df) if trades_df is not None else None
+    print("  已生成: net_buy_vs_index.png")
+
     # 仓位变动图
     pos_path = plot_position_vs_index(daily_trades, daily_df) if daily_trades is not None else None
     if pos_path:
@@ -147,8 +150,18 @@ def main():
     plot_nav_vs_index(daily_df)
     print("  已生成: nav_vs_index.png")
 
+    # 逐日跟踪表（归一化净值 + 仓位）
+    tracking_df, tracking_path = save_daily_tracking(daily_df, holdings_daily, nav_df)
+    print(f"  已保存: daily_tracking.xlsx ({len(tracking_df)} 天)")
+
+    # 仓位变动 vs 指数图
+    pos_chg_path = plot_position_change_vs_index(tracking_df, daily_df)
+    if pos_chg_path:
+        print("  已生成: position_change_vs_index.png")
+
     # Step 7: 配置偏移分析
     print("\n[7/7] 配置偏移分析...")
+    bias_sector = None
     if holdings_df is not None and weight_df is not None:
         bias_detail = calc_allocation_bias(holdings_df, weight_df, reits_info)
         bias_sector = calc_sector_allocation_bias(holdings_df, weight_df, reits_info)
@@ -166,7 +179,15 @@ def main():
 
     # Step 8: 报告生成
     print("\n[8/8] 生成分析报告...")
-    report_path = generate_report(config.RUN_TIMESTAMP)
+    report_path = generate_report(
+        config.RUN_TIMESTAMP,
+        metrics=metrics,
+        period_df=period_df,
+        trades_df=trades_df,
+        daily_trades=daily_trades,
+        timing_result=timing_result,
+        bias_sector=bias_sector,
+    )
     print(f"  报告已生成: {report_path}")
 
     print("\n" + "=" * 60)

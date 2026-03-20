@@ -76,13 +76,13 @@ def calc_metrics(nav_df: pd.DataFrame, index_df: pd.DataFrame, base_date=None) -
 
     metrics = {}
 
-    # 计算绝对收益率（区间总收益）和年化指标
+    rf = 0.0185
+
     if not nav.empty and len(nav) > 1:
         nav_total_ret = nav.iloc[-1] / nav.iloc[0] - 1
         metrics["nav_total_return"] = nav_total_ret
         metrics["nav_ann_return"] = _annualized_return(nav)
         metrics["nav_ann_vol"] = _annualized_vol(nav)
-        rf = 0.02
         if metrics["nav_ann_vol"] and metrics["nav_ann_vol"] > 0:
             metrics["nav_sharpe"] = (metrics["nav_ann_return"] - rf) / metrics["nav_ann_vol"]
         else:
@@ -94,6 +94,10 @@ def calc_metrics(nav_df: pd.DataFrame, index_df: pd.DataFrame, base_date=None) -
         metrics["idx_total_return"] = idx_total_ret
         metrics["idx_ann_return"] = _annualized_return(idx)
         metrics["idx_ann_vol"] = _annualized_vol(idx)
+        if metrics["idx_ann_vol"] and metrics["idx_ann_vol"] > 0:
+            metrics["idx_sharpe"] = (metrics["idx_ann_return"] - rf) / metrics["idx_ann_vol"]
+        else:
+            metrics["idx_sharpe"] = np.nan
         metrics["idx_max_drawdown"] = _max_drawdown(idx)
 
     if "nav_ann_return" in metrics and "idx_ann_return" in metrics:
@@ -317,13 +321,13 @@ def save_performance_summary(metrics: dict, period_df: pd.DataFrame = None):
                 "指数": f"{idx_vol*100:.2f}%" if idx_vol is not None else "N/A",
             })
 
-        # 夏普比率（仅账户）
         nav_sharpe = metrics.get("nav_sharpe")
-        if nav_sharpe is not None:
+        idx_sharpe = metrics.get("idx_sharpe")
+        if nav_sharpe is not None or idx_sharpe is not None:
             rows.append({
-                "指标": "夏普比率",
+                "指标": "夏普比率(Rf=1.85%)",
                 config.ACCOUNT_NAME: f"{nav_sharpe:.4f}" if nav_sharpe is not None else "N/A",
-                "指数": "N/A",
+                "指数": f"{idx_sharpe:.4f}" if idx_sharpe is not None else "N/A",
             })
 
         # 最大回撤
@@ -375,4 +379,104 @@ def save_performance_summary(metrics: dict, period_df: pd.DataFrame = None):
             display_df = display_df.rename(columns=col_rename)
             display_df.to_excel(writer, sheet_name="分月表现", index=False)
 
+    return out_path
+
+
+def save_daily_tracking(daily_df, holdings_daily=None, nav_df=None):
+    """
+    保存逐日跟踪表：基准日归一化账户净值、指数净值、仓位
+    非交易日用前值填充，确保指数无断档
+    """
+    df = daily_df.copy()
+    df.index = pd.to_datetime(df.index)
+    base_date = pd.to_datetime(config.BASE_DATE)
+    df = df[df.index >= base_date].sort_index()
+
+    # 构建连续自然日索引，用前值填充非交易日
+    full_idx = pd.date_range(start=df.index.min(), end=df.index.max(), freq="D")
+    df = df.reindex(full_idx).ffill()
+
+    tracking = pd.DataFrame(index=df.index)
+    tracking.index.name = "日期"
+
+    if "nav_norm" in df.columns:
+        tracking["账户净值(归一)"] = df["nav_norm"]
+    if "reits_index_norm" in df.columns:
+        tracking["指数净值(归一)"] = df["reits_index_norm"]
+    if "excess_pct" in df.columns:
+        tracking["超额(%)"] = df["excess_pct"]
+
+    if holdings_daily is not None and nav_df is not None and "net_assets" in nav_df.columns:
+        hd = holdings_daily.copy()
+        hd.index = pd.to_datetime(hd.index)
+        na = nav_df[["net_assets"]].copy()
+        na.index = pd.to_datetime(na.index)
+
+        pos = pd.DataFrame(index=tracking.index)
+        pos["market_value"] = hd["market_value"].reindex(pos.index).ffill()
+        pos["net_assets"] = na["net_assets"].reindex(pos.index).ffill()
+        pos["position_pct"] = pos["market_value"] / pos["net_assets"] * 100
+
+        tracking["仓位(%)"] = pos["position_pct"]
+        tracking["仓位变动(%)"] = tracking["仓位(%)"].diff()
+
+    out_path = os.path.join(config.OUTPUT_DIR, "daily_tracking.xlsx")
+    tracking.to_excel(out_path, engine='openpyxl')
+    return tracking, out_path
+
+
+def plot_position_change_vs_index(tracking_df, daily_df):
+    """
+    仓位变动 vs 指数走势图
+    - 左轴：中证REITs指数归一化走势（加粗折线）
+    - 右轴：仓位日变动（柱状图，加仓红色/减仓蓝色）
+    """
+    if tracking_df is None or "仓位变动(%)" not in tracking_df.columns:
+        return None
+
+    pos_chg = tracking_df["仓位变动(%)"].dropna()
+    if pos_chg.empty:
+        return None
+
+    base_date = pd.to_datetime(config.BASE_DATE)
+
+    fig, ax1 = plt.subplots(figsize=(14, 6))
+
+    df = daily_df.copy()
+    df.index = pd.to_datetime(df.index)
+    df = df[df.index >= base_date]
+
+    if "reits_index_norm" in df.columns:
+        idx_clean = df["reits_index_norm"].dropna()
+        if not idx_clean.empty:
+            ax1.plot(idx_clean.index, idx_clean.values,
+                     color="#1a1a1a", linewidth=2.5, label="中证REITs指数(归一)", zorder=5)
+    ax1.set_ylabel("指数（归一化）", fontsize=11, color="#1a1a1a")
+    ax1.tick_params(axis='y', labelcolor="#1a1a1a")
+    ax1.yaxis.grid(True, alpha=0.3)
+    ax1.set_axisbelow(True)
+
+    ax2 = ax1.twinx()
+    colors = ["#d62728" if v > 0 else "#1f77b4" for v in pos_chg.values]
+    ax2.bar(pos_chg.index, pos_chg.values, color=colors, alpha=0.6, width=1, zorder=3)
+    ax2.set_ylabel("仓位变动(%)", fontsize=11, color="#666")
+    ax2.tick_params(axis='y', labelcolor="#666")
+    ax2.axhline(0, color="gray", linewidth=0.5, linestyle="-", zorder=2)
+
+    from matplotlib.patches import Patch
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    legend_patches = [Patch(facecolor="#d62728", alpha=0.6, label="加仓"),
+                      Patch(facecolor="#1f77b4", alpha=0.6, label="减仓")]
+    ax1.legend(lines1 + legend_patches, labels1 + ["加仓", "减仓"],
+               loc="upper left", fontsize=9)
+
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    plt.xticks(rotation=30)
+    ax1.set_title(f"仓位变动 vs 中证REITs指数（基准日：{base_date.strftime('%Y-%m-%d')}）",
+                  fontsize=13, fontweight="bold")
+
+    plt.tight_layout()
+    out_path = os.path.join(config.OUTPUT_FIGURES_DIR, "position_change_vs_index.png")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
     return out_path

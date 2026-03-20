@@ -1,5 +1,6 @@
 """
 报告生成模块
+v2 - 直接接收分析数据，不再依赖中间 CSV 文件
 """
 import os
 import sys
@@ -10,159 +11,205 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
 
-def _read_csv_safe(path: str) -> pd.DataFrame:
-    if os.path.exists(path):
-        try:
-            return pd.read_csv(path, encoding="utf-8-sig")
-        except Exception:
-            return pd.DataFrame()
-    return pd.DataFrame()
+def generate_report(date_str=None, **kwargs):
+    """
+    生成 Markdown 分析报告
 
+    优先使用 kwargs 传入的内存数据，避免读格式化后的 xlsx 字符串。
 
-def generate_report(date_str: str = None):
-    """读取所有分析结果，生成 output/reports/report_{date}.md"""
+    kwargs:
+        metrics        : dict       - calc_metrics() 返回的业绩指标
+        period_df      : DataFrame  - calc_metrics_by_period() 分月表现
+        trades_df      : DataFrame  - 原始交易明细 (含 sector)
+        daily_trades   : DataFrame  - summarize_trades() 日度汇总
+        timing_result  : DataFrame  - analyze_timing() 择时结果
+        bias_sector    : DataFrame  - calc_sector_allocation_bias() 板块偏移
+    """
     if date_str is None:
         from datetime import date
         date_str = date.today().strftime("%Y%m%d")
 
-    # 读取各分析结果
-    perf_df = _read_csv_safe(os.path.join(config.OUTPUT_DIR, "performance_summary.csv"))
-    trade_df = _read_csv_safe(os.path.join(config.OUTPUT_DIR, "trade_summary.csv"))
-    timing_df = _read_csv_safe(os.path.join(config.OUTPUT_DIR, "timing_analysis.csv"))
-    daily_df = _read_csv_safe(os.path.join(config.DATA_PROCESSED_DIR, "daily.csv"))
-    trades_clean_df = _read_csv_safe(os.path.join(config.DATA_PROCESSED_DIR, "trades_clean.csv"))
-    holdings_df = _read_csv_safe(os.path.join(config.DATA_PROCESSED_DIR, "holdings.csv"))
-    bias_df = _read_csv_safe(os.path.join(config.DATA_PROCESSED_DIR, "allocation_bias.csv"))
+    metrics = kwargs.get("metrics", {})
+    period_df = kwargs.get("period_df")
+    trades_df = kwargs.get("trades_df")
+    daily_trades = kwargs.get("daily_trades")
+    timing_result = kwargs.get("timing_result")
+    bias_sector = kwargs.get("bias_sector")
 
-    lines = []
     account_name = config.ACCOUNT_NAME
 
-    # 标题
+    if len(date_str) >= 8 and date_str[:8].replace("_", "").isdigit():
+        display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+    else:
+        display_date = date_str
+
+    def _fmt_pct(v):
+        if v is None:
+            return "N/A"
+        if isinstance(v, float) and np.isnan(v):
+            return "N/A"
+        return f"{v * 100:.2f}%"
+
+    def _fmt_num(v, decimals=4):
+        if v is None:
+            return "N/A"
+        if isinstance(v, float) and np.isnan(v):
+            return "N/A"
+        return f"{v:.{decimals}f}"
+
+    lines = []
+
+    # ── 标题 ──
     lines.append(f"# {account_name} REITs 交易分析报告")
-    lines.append(f"")
-    lines.append(f"**报告日期**: {date_str[:4]}-{date_str[4:6]}-{date_str[6:]}")
+    lines.append("")
+    lines.append(f"**报告日期**: {display_date}")
     lines.append(f"**基准日期**: {config.BASE_DATE}")
-    lines.append(f"")
+    lines.append("")
     lines.append("---")
     lines.append("")
 
-    # 1. 核心结论
+    # ── 1. 核心结论 ──
     lines.append("## 1. 核心结论")
     lines.append("")
-    if not perf_df.empty:
-        nav_ret_row = perf_df[perf_df["指标"].str.contains("年化收益率", na=False) & ~perf_df["指标"].str.contains("指数", na=False)]
-        excess_row = perf_df[perf_df["指标"].str.contains("超额", na=False)]
-        if not nav_ret_row.empty:
-            lines.append(f"- {account_name}年化收益率：{nav_ret_row['数值'].iloc[0]}")
-        if not excess_row.empty:
-            lines.append(f"- 相对中证REITs指数超额收益：{excess_row['数值'].iloc[0]}")
-    if not trade_df.empty:
-        total_buy = trade_df["buy_amount"].sum() if "buy_amount" in trade_df.columns else 0
-        total_sell = trade_df["sell_amount"].sum() if "sell_amount" in trade_df.columns else 0
-        total_dividend = trade_df["dividend_amount"].sum() if "dividend_amount" in trade_df.columns else 0
-        lines.append(f"- 累计买入：{total_buy/1e6:.2f} 百万元，卖出：{total_sell/1e6:.2f} 百万元")
-        if total_dividend > 0:
-            lines.append(f"- 红利到账：{total_dividend/1e4:.2f} 万元")
+    if metrics:
+        nav_total = metrics.get("nav_total_return")
+        nav_ann = metrics.get("nav_ann_return")
+        excess = metrics.get("excess_return")
+        if nav_total is not None:
+            lines.append(f"- {account_name}区间总收益率：{_fmt_pct(nav_total)}")
+        if nav_ann is not None:
+            lines.append(f"- {account_name}年化收益率：{_fmt_pct(nav_ann)}")
+        if excess is not None:
+            lines.append(f"- 相对中证REITs指数超额年化收益：{_fmt_pct(excess)}")
+
+    if trades_df is not None and not trades_df.empty and "direction" in trades_df.columns:
+        amounts = pd.to_numeric(trades_df.get("amount", pd.Series(dtype=float)), errors="coerce").fillna(0)
+        buy_total = amounts[trades_df["direction"] == "buy"].sum()
+        sell_total = amounts[trades_df["direction"] == "sell"].sum()
+        div_total = amounts[trades_df["direction"] == "dividend"].sum()
+        lines.append(f"- 累计买入：{buy_total / 1e4:.2f} 万元，卖出：{sell_total / 1e4:.2f} 万元")
+        if div_total > 0:
+            lines.append(f"- 红利到账：{div_total / 1e4:.2f} 万元")
     lines.append("")
 
-    # 2. 账户表现
+    # ── 2. 账户表现 ──
     lines.append("## 2. 账户表现")
     lines.append("")
-    if not perf_df.empty:
-        lines.append("| 指标 | 数值 |")
-        lines.append("|------|------|")
-        for _, row in perf_df.iterrows():
-            lines.append(f"| {row['指标']} | {row['数值']} |")
+    if metrics:
+        lines.append(f"| 指标 | {account_name} | 指数 |")
+        lines.append("|------|------|------|")
+        perf_rows = [
+            ("区间总收益率", _fmt_pct(metrics.get("nav_total_return")), _fmt_pct(metrics.get("idx_total_return"))),
+            ("年化收益率", _fmt_pct(metrics.get("nav_ann_return")), _fmt_pct(metrics.get("idx_ann_return"))),
+            ("年化波动率", _fmt_pct(metrics.get("nav_ann_vol")), _fmt_pct(metrics.get("idx_ann_vol"))),
+            ("夏普比率(Rf=1.85%)", _fmt_num(metrics.get("nav_sharpe")), _fmt_num(metrics.get("idx_sharpe"))),
+            ("最大回撤", _fmt_pct(metrics.get("nav_max_drawdown")), _fmt_pct(metrics.get("idx_max_drawdown"))),
+            ("超额年化收益率", _fmt_pct(metrics.get("excess_return")), "N/A"),
+        ]
+        for label, nav_val, idx_val in perf_rows:
+            lines.append(f"| {label} | {nav_val} | {idx_val} |")
     else:
         lines.append("（暂无业绩数据）")
     lines.append("")
 
-    # 3. 配置偏移
+    # ── 2.1 分月表现 ──
+    if period_df is not None and not period_df.empty:
+        lines.append("### 分月表现")
+        lines.append("")
+        lines.append(f"| 期间 | 起始日 | 结束日 | {account_name}收益 | 指数收益 | 超额收益 |")
+        lines.append("|------|--------|--------|------|------|------|")
+        for _, row in period_df.iterrows():
+            nav_r = f"{row['nav_return']:.2f}%" if pd.notna(row.get("nav_return")) else ""
+            idx_r = f"{row['idx_return']:.2f}%" if pd.notna(row.get("idx_return")) else ""
+            exc = f"{row['excess']:.2f}%" if pd.notna(row.get("excess")) else ""
+            lines.append(
+                f"| {row.get('period', '')} | {row.get('start_date', '')} "
+                f"| {row.get('end_date', '')} | {nav_r} | {idx_r} | {exc} |"
+            )
+        lines.append("")
+
+    # ── 3. 配置偏移 ──
     lines.append("## 3. 配置偏移分析")
     lines.append("")
-    if bias_df is not None and not bias_df.empty:
+    if bias_sector is not None and not bias_sector.empty:
         lines.append("| 板块 | 账户权重 | 指数权重 | 偏移 |")
         lines.append("|------|----------|----------|------|")
-        for _, row in bias_df.iterrows():
-            lines.append(f"| {row.get('板块', '')} | {row.get('账户权重', '')} | {row.get('指数权重', '')} | {row.get('偏移', '')} |")
+        for _, row in bias_sector.iterrows():
+            lines.append(
+                f"| {row.get('sector', '')} "
+                f"| {row.get('account_weight', 0):.2%} "
+                f"| {row.get('index_weight', 0):.2%} "
+                f"| {row.get('weight_bias', 0):+.2%} |"
+            )
     else:
         lines.append("（暂无配置偏移数据）")
     lines.append("")
 
-    # 4. 交易行为复盘
+    # ── 4. 交易行为复盘 ──
     lines.append("## 4. 交易行为复盘")
     lines.append("")
-    if not trade_df.empty:
-        trade_df["date"] = pd.to_datetime(trade_df["date"], errors="coerce")
-        heavy_buy = trade_df[trade_df["signal"] == "heavy_buy"] if "signal" in trade_df.columns else pd.DataFrame()
-        heavy_sell = trade_df[trade_df["signal"] == "heavy_sell"] if "signal" in trade_df.columns else pd.DataFrame()
-        lines.append(f"- 交易日总数：{len(trade_df)} 天")
-        if not heavy_buy.empty:
-            lines.append(f"- 大幅加仓日：{len(heavy_buy)} 天")
-        if not heavy_sell.empty:
-            lines.append(f"- 大幅减仓日：{len(heavy_sell)} 天")
-        if not trades_clean_df.empty and "sector" in trades_clean_df.columns:
-            trades_clean_df["amount"] = pd.to_numeric(trades_clean_df["amount"], errors="coerce")
-            sector_sum = trades_clean_df.groupby('sector')['amount'].sum().sort_values(ascending=False)
-            lines.append("")
-            lines.append("**各板块交易金额（万元）**：")
-            lines.append("")
-            lines.append("| 板块 | 金额（万元） |")
-            lines.append("|------|------------|")
-            for s, v in sector_sum.items():
-                lines.append(f"| {s} | {v/1e4:.2f} |")
+    if daily_trades is not None and not daily_trades.empty:
+        lines.append(f"- 交易日总数：{len(daily_trades)} 天")
+        if "signal" in daily_trades.columns:
+            hb = len(daily_trades[daily_trades["signal"] == "heavy_buy"])
+            hs = len(daily_trades[daily_trades["signal"] == "heavy_sell"])
+            if hb > 0:
+                lines.append(f"- 大幅加仓日：{hb} 天")
+            if hs > 0:
+                lines.append(f"- 大幅减仓日：{hs} 天")
+    elif trades_df is not None and not trades_df.empty:
+        lines.append(f"- 交易记录总数：{len(trades_df)} 笔")
     else:
         lines.append("（暂无交易数据）")
+
+    if trades_df is not None and not trades_df.empty and "sector" in trades_df.columns:
+        amounts = pd.to_numeric(trades_df.get("amount", pd.Series(dtype=float)), errors="coerce").fillna(0)
+        trades_tmp = trades_df.assign(amount_num=amounts)
+        buy_s = trades_tmp.loc[trades_tmp["direction"] == "buy"].groupby("sector")["amount_num"].sum() / 1e4
+        sell_s = trades_tmp.loc[trades_tmp["direction"] == "sell"].groupby("sector")["amount_num"].sum() / 1e4
+        sector_detail = pd.concat([buy_s.rename("买入"), sell_s.rename("卖出")], axis=1).fillna(0)
+        sector_detail["净买入"] = sector_detail["买入"] - sector_detail["卖出"]
+        sector_detail = sector_detail.sort_values("买入", ascending=False)
+
+        lines.append("")
+        lines.append("**各板块交易（万元）：**")
+        lines.append("")
+        lines.append("| 板块 | 买入 | 卖出 | 净买入 |")
+        lines.append("|------|------|------|--------|")
+        for s, row in sector_detail.iterrows():
+            lines.append(f"| {s} | {row['买入']:.2f} | {row['卖出']:.2f} | {row['净买入']:.2f} |")
     lines.append("")
 
-    # 5. 择时效果评估
+    # ── 5. 择时效果评估 ──
     lines.append("## 5. 择时效果评估")
     lines.append("")
-    if not timing_df.empty:
-        lines.append(f"- 大幅加减仓事件数：{len(timing_df)} 次")
+    if timing_result is not None and not timing_result.empty:
+        lines.append(f"- 大幅加减仓事件数：{len(timing_result)} 次")
         for days in [5, 10, 20]:
             col = f"ret_{days}d"
-            if col in timing_df.columns:
-                buy_rows = timing_df[timing_df["signal"] == "heavy_buy"][col].dropna()
-                sell_rows = timing_df[timing_df["signal"] == "heavy_sell"][col].dropna()
-                if not buy_rows.empty:
-                    wr = (buy_rows > 0).mean()
-                    lines.append(f"- 买入后 {days} 日指数胜率：{wr:.1%}（平均涨跌幅 {buy_rows.mean():.2f}%）")
-                if not sell_rows.empty:
-                    wr = (sell_rows < 0).mean()
-                    lines.append(f"- 卖出后 {days} 日指数胜率：{wr:.1%}（平均涨跌幅 {sell_rows.mean():.2f}%）")
+            if col not in timing_result.columns:
+                continue
+            buy_rows = timing_result.loc[timing_result["signal"] == "heavy_buy", col].dropna()
+            sell_rows = timing_result.loc[timing_result["signal"] == "heavy_sell", col].dropna()
+            if not buy_rows.empty:
+                wr = (buy_rows > 0).mean()
+                lines.append(f"- 买入后{days}日指数胜率：{wr:.1%}（平均涨跌幅 {buy_rows.mean():.2f}%）")
+            if not sell_rows.empty:
+                wr = (sell_rows < 0).mean()
+                lines.append(f"- 卖出后{days}日指数胜率：{wr:.1%}（平均涨跌幅 {sell_rows.mean():.2f}%）")
     else:
         lines.append("（择时信号不足，无法评估）")
     lines.append("")
 
-    # 6. 板块分析
-    lines.append("## 6. 板块分析")
-    lines.append("")
-    if not trades_clean_df.empty and "sector" in trades_clean_df.columns:
-        trades_clean_df["amount"] = pd.to_numeric(trades_clean_df.get("amount", 0), errors="coerce").fillna(0)
-        trades_clean_df["direction"] = trades_clean_df.get("direction", "")
-        buy_df = trades_clean_df[trades_clean_df["direction"] == "buy"]
-        sell_df = trades_clean_df[trades_clean_df["direction"] == "sell"]
-        buy_s = buy_df.groupby("sector")["amount"].sum().rename("买入（万元）") / 1e4
-        sell_s = sell_df.groupby("sector")["amount"].sum().rename("卖出（万元）") / 1e4
-        sector_detail = pd.concat([buy_s, sell_s], axis=1).fillna(0)
-        sector_detail["净买入（万元）"] = sector_detail["买入（万元）"] - sector_detail["卖出（万元）"]
-        sector_detail = sector_detail.sort_values("买入（万元）", ascending=False)
-
-        lines.append("| 板块 | 买入（万元） | 卖出（万元） | 净买入（万元） |")
-        lines.append("|------|------------|------------|--------------|")
-        for s, row in sector_detail.iterrows():
-            lines.append(f"| {s} | {row['买入（万元）']:.2f} | {row['卖出（万元）']:.2f} | {row['净买入（万元）']:.2f} |")
-    else:
-        lines.append("（暂无板块数据）")
-    lines.append("")
-
-    # 7. 图表附录
-    lines.append("## 7. 图表附录")
+    # ── 6. 图表附录 ──
+    lines.append("## 6. 图表附录")
     lines.append("")
     fig_map = {
         "nav_vs_index.png": "净值 vs 指数归一化对比（含超额）",
-        "trade_flow.png": "资金流向与指数走势",
+        "trade_flow.png": "资金流向与指数走势（买入/卖出）",
+        "net_buy_vs_index.png": "净买入与指数走势",
+        "position_change_vs_index.png": "仓位变动 vs 指数走势",
+        "position_vs_index.png": "仓位比例 vs 指数走势",
         "sector_performance.png": "板块表现 vs 交易金额",
         "sector_rotation_net.png": "板块轮动热力图-净买入",
         "sector_rotation_return.png": "板块轮动热力图-涨跌幅",
