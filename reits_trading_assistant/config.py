@@ -1,25 +1,30 @@
 # 数据文件路径配置
 import os
+from datetime import datetime
 
 # 基础路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data", "raw")
 DATA_PROCESSED_DIR = os.path.join(BASE_DIR, "data", "processed")
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+
+# 输出目录按日期时间生成（避免覆盖）
+RUN_TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output", RUN_TIMESTAMP)
 OUTPUT_FIGURES_DIR = os.path.join(OUTPUT_DIR, "figures")
 OUTPUT_REPORTS_DIR = os.path.join(OUTPUT_DIR, "reports")
 
 # 文件名配置（根据实际文件名调整）
 FILE_REITS_INFO = "沪深REITs.xlsx"
-FILE_INDEX = "932047.CSI.xlsx"  # 中证 REITs 全收益指数
+FILE_INDEX = "指数.xlsx"  # 中证 REITs 全收益指数
 FILE_WEIGHT_932006 = "932006closeweight.xlsx"  # 932006收盘价指数权重
 FILE_HOLDINGS = "统计分析-持仓查询-组合持仓查询.xlsx"  # 持仓查询文件
+FILE_LOCAL_PRICES = "行情数据251231至今.xlsx"         # 本地个股行情（Wind回退）
 
 # 日报表配置：自动读取input目录下最新日期的日报表
 DAILY_REPORT_PATTERN = "日报表_*.xlsx"
 
 # 交易所成交查询文件（优先使用）
-FILE_EXCHANGE_TRADES = "统计分析 - 交易查询*.csv"
+FILE_EXCHANGE_TRADES = "统计分析-交易查询*.csv"
 
 # Sheet 名配置
 SHEET_NAV = "净值时间序列"
@@ -33,7 +38,7 @@ ACCOUNT_NAME = "中诚信托-明珠76号"  # 用于报表表头显示
 BASE_DATE = "2025-12-31"  # 格式：YYYY-MM-DD
 
 # Wind API配置
-USE_WIND_API = False  # 默认关闭，除非有 Wind 终端  # 是否优先使用Wind API获取行情
+USE_WIND_API = True   # 优先使用Wind API获取行情，失败自动回退本地文件
 WIND_CACHE_DAYS = 1  # Wind数据缓存天数
 
 # 证券代码处理

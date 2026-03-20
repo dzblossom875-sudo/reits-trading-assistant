@@ -163,15 +163,45 @@ def load_index_data_with_fallback() -> pd.DataFrame:
     return load_index()
 
 
+def _load_local_prices(codes: list) -> pd.DataFrame:
+    """从本地行情文件读取个股收盘价"""
+    filepath = os.path.join(config.DATA_RAW_DIR, config.FILE_LOCAL_PRICES)
+    if not os.path.exists(filepath):
+        return None
+    df_raw = pd.read_excel(filepath, sheet_name="Sheet1", header=None)
+    # row 4 = 代码行（含 .SH/.SZ），row 5+ = 数据
+    code_row = df_raw.iloc[4].astype(str).str.strip()
+    clean_cols = code_row.str.replace(r"\.(SH|SZ)$", "", regex=True)
+    df_data = df_raw.iloc[5:].copy().reset_index(drop=True)
+    df_data.columns = clean_cols
+    df_data = df_data.rename(columns={clean_cols.iloc[0]: "date"})
+    df_data["date"] = pd.to_datetime(df_data["date"], errors="coerce")
+    df_data = df_data[df_data["date"].notna()].set_index("date")
+    for col in df_data.columns:
+        df_data[col] = pd.to_numeric(df_data[col], errors="coerce")
+    # 只保留请求的代码
+    available = [c for c in codes if c in df_data.columns]
+    missing = [c for c in codes if c not in df_data.columns]
+    if missing:
+        print(f"  本地文件缺少以下代码：{missing}")
+    return df_data[available].sort_index() if available else None
+
+
 def load_reits_prices_with_fallback(codes: list) -> pd.DataFrame:
     """
-    加载REITs个股价格，优先从Wind获取，失败时返回None（需要用户提供数据）
+    加载REITs个股价格，优先从Wind获取，数据异常时回退本地文件
+    判断标准：Wind返回数据的非空率 < 50% 视为异常
     """
     if config.USE_WIND_API:
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = "2024-01-01"
         df = get_reits_price_from_wind(codes, start_date, end_date)
         if df is not None and not df.empty:
-            return df
-    print("无法从Wind获取个股行情，请提供板块行情数据文件")
-    return None
+            nan_rate = df.isna().values.mean()
+            if nan_rate < 0.5:
+                return df
+            print(f"  Wind数据异常（NaN率={nan_rate:.0%}），回退本地文件")
+        else:
+            print("  Wind获取失败，回退本地文件")
+    print("  读取本地行情文件...")
+    return _load_local_prices(codes)
