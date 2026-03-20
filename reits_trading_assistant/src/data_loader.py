@@ -1,6 +1,6 @@
 """
 数据加载与清洗模块
-v2.0 - 使用交易所成交查询文件 + Wind API 检查
+v2.1 - 修复持仓数据读取（时点数据 + 负数检查）
 """
 import os, re, sys
 import glob
@@ -14,10 +14,7 @@ from src.utils import clean_code, clean_number, parse_date, get_latest_daily_rep
 # ============== Wind API 检查 ==============
 
 def check_wind_connection():
-    """
-    检查 Wind API 是否成功接入
-    返回：(是否成功，消息)
-    """
+    """检查 Wind API 是否成功接入"""
     try:
         from WindPy import w
         result = w.start()
@@ -105,21 +102,10 @@ def load_nav_from_daily_report():
     return df_clean
 
 
-# ============== 交易数据加载（新增） ==============
+# ============== 交易数据加载 ==============
 
 def load_trades_from_exchange_query():
-    """
-    从交易所成交查询文件读取交易数据
-    文件：统计分析 - 交易查询 - 交易所成交查询*.csv
-    
-    关键字段：
-    - 证券代码
-    - 委托方向（买入/卖出）
-    - 成交价格
-    - 成交数量
-    - 成交金额
-    """
-    # 查找最新的交易所成交查询文件
+    """从交易所成交查询文件读取交易数据"""
     pattern = os.path.join(config.DATA_RAW_DIR, "统计分析 - 交易查询*.csv")
     files = glob.glob(pattern)
     
@@ -127,18 +113,15 @@ def load_trades_from_exchange_query():
         print("⚠️ 未找到交易所成交查询文件")
         return None
     
-    # 按修改时间排序，取最新文件
     latest_file = max(files, key=os.path.getmtime)
     print(f"📖 读取交易所成交查询：{os.path.basename(latest_file)}")
     
-    # 自动识别分隔符
     try:
         df = pd.read_csv(latest_file, sep=None, engine='python', dtype=str)
     except Exception as e:
         print(f"❌ 读取 CSV 失败：{e}")
         return None
     
-    # 列名映射
     col_map = {}
     for col in df.columns:
         col_str = str(col).strip()
@@ -151,30 +134,23 @@ def load_trades_from_exchange_query():
         elif "业务日期" in col_str or "日期" in col_str: col_map["date"] = col
     
     print(f"  列映射：{col_map}")
-    
     df = df.rename(columns={v:k for k,v in col_map.items()})
     
-    # 检查必需字段
     required_cols = ["date", "code", "direction", "amount"]
     missing = set(required_cols) - set(df.columns)
     if missing:
         print(f"⚠️ 缺少字段：{missing}")
         return None
     
-    # 清洗日期
     df["date"] = df["date"].apply(parse_date)
     df = df[df["date"].notna()]
-    
-    # 清洗代码
     df["code"] = df["code"].apply(clean_code)
     df = df[df["code"].notna() & (df["code"] != "000000")]
     
-    # 清洗数值字段
     for col in ["quantity", "amount", "price"]:
         if col in df.columns:
             df[col] = df[col].apply(clean_number)
     
-    # 标准化委托方向
     def normalize_direction(dir_val):
         if pd.isna(dir_val):
             return "other"
@@ -190,13 +166,11 @@ def load_trades_from_exchange_query():
     
     df["direction"] = df["direction"].apply(normalize_direction)
     
-    # 统计交易方向分布
     direction_counts = df["direction"].value_counts()
     print(f"  交易方向分布:")
     for direction, count in direction_counts.items():
         print(f"    - {direction}: {count} 笔")
     
-    # 选择关键字段
     keep_cols = [c for c in ["date","code","name","direction","quantity","price","amount"] if c in df.columns]
     df_clean = df[keep_cols].copy()
     
@@ -204,39 +178,107 @@ def load_trades_from_exchange_query():
     return df_clean.sort_values("date").reset_index(drop=True)
 
 
-# ============== 持仓数据加载 ==============
+# ============== 持仓数据加载（v2.1 修复版） ==============
 
 def load_holdings():
-    """读取持仓查询文件"""
+    """
+    读取持仓查询文件
+    文件结构（根据实际文件确认）：
+    - A 列（0）：日期
+    - L 列（11）：证券代码
+    - P 列（15）：权重（单券市值/组合净值）
+    - AR 列（43）：市值
+    
+    处理逻辑：
+    1. 读取全部数据
+    2. 筛选最新日期的持仓（时点数据）
+    3. 检查负数持仓（报错）
+    4. 验证权重合计
+    """
     filepath = os.path.join(config.DATA_RAW_DIR, config.FILE_HOLDINGS)
     if not os.path.exists(filepath):
         print(f"⚠️ 持仓文件不存在：{filepath}")
         return None
     print(f"📖 读取持仓查询：{os.path.basename(filepath)}")
-    df = pd.read_excel(filepath, sheet_name=config.SHEET_HOLDINGS, header=None, skiprows=1, dtype=str)
+    
+    # 读取 Excel（无表头）
+    df = pd.read_excel(filepath, sheet_name=config.SHEET_HOLDINGS, header=None, dtype=str)
+    
+    # 列映射（0-indexed）
+    # A=0, L=11, P=15, AR=43
     col_map = {
-        0: "date",
-        11: "code",
-        12: "name",
-        13: "asset_type",
-        25: "cost_price",
-        40: "market_value",
+        0: "date",        # A 列：日期
+        11: "code",       # L 列：证券代码
+        15: "weight",     # P 列：权重
+        43: "market_value",  # AR 列：市值
     }
     df = df.rename(columns=col_map)
-    if "date" in df.columns:
-        df["date"] = df["date"].apply(parse_date)
-    if "code" in df.columns:
-        df["code"] = df["code"].apply(clean_code)
-    for col in ["market_value", "cost_price"]:
-        if col in df.columns:
-            df[col] = df[col].apply(clean_number)
-    if "asset_type" in df.columns:
-        df = df[df["asset_type"].astype(str).str.contains("REITs|基金", na=False, case=False)]
+    
+    # 保留关键列
+    keep_cols = [c for c in ["date", "code", "weight", "market_value"] if c in df.columns]
+    df = df[keep_cols].copy()
+    
+    # 检查必需字段
+    required = ["date", "code", "market_value"]
+    missing = set(required) - set(df.columns)
+    if missing:
+        print(f"❌ 缺少必需字段：{missing}")
+        print(f"  当前字段：{list(df.columns)}")
+        return None
+    
+    # 清洗日期
+    df["date"] = df["date"].apply(parse_date)
+    df = df[df["date"].notna()]
+    
+    # 清洗代码
+    df["code"] = df["code"].apply(clean_code)
     df = df[df["code"].notna() & (df["code"] != "000000")]
-    keep_cols = [c for c in ["date","code","name","market_value","cost_price"] if c in df.columns]
-    df_clean = df[keep_cols].dropna(subset=["code"]).reset_index(drop=True)
-    print(f"  ✅ 读取完成：{len(df_clean)} 条")
-    return df_clean
+    
+    # 清洗市值（数值）
+    df["market_value"] = df["market_value"].apply(clean_number)
+    
+    # 清洗权重（如果有）
+    if "weight" in df.columns:
+        df["weight"] = df["weight"].apply(clean_number)
+        # 转换为小数（如果是百分比）
+        if df["weight"].max() > 1:
+            df["weight"] = df["weight"] / 100
+    
+    # 🔴 检查负数持仓（报错）
+    negative_holdings = df[df["market_value"] < 0]
+    if not negative_holdings.empty:
+        print(f"❌ 错误：发现{len(negative_holdings)}条负数持仓记录！")
+        print("  负数持仓明细（前 10 条）：")
+        for idx, row in negative_holdings.head(10).iterrows():
+            code = row.get('code', 'N/A')
+            mv = row.get('market_value', 0)
+            print(f"    - {code}: {mv:.2f}")
+        print("  请检查持仓数据源！")
+        # 过滤负数持仓
+        df = df[df["market_value"] >= 0]
+    
+    # 🔴 获取最新日期的持仓（时点数据）
+    latest_date = df["date"].max()
+    min_date = df["date"].min()
+    print(f"  持仓日期范围：{min_date.strftime('%Y-%m-%d')} ~ {latest_date.strftime('%Y-%m-%d')}")
+    print(f"  → 使用最新日期持仓：{latest_date.strftime('%Y-%m-%d')}")
+    df_latest = df[df["date"] == latest_date].copy()
+    
+    # 如果权重字段为空，用市值计算
+    if "weight" not in df_latest.columns or df_latest["weight"].isna().all():
+        total_mv = df_latest["market_value"].sum()
+        if total_mv > 0:
+            df_latest["weight"] = df_latest["market_value"] / total_mv
+            print(f"  权重已计算（市值/总市值）")
+    
+    # 验证权重合计
+    weight_sum = df_latest["weight"].sum()
+    print(f"  权重合计：{weight_sum:.2%}")
+    if abs(weight_sum - 1.0) > 0.01:
+        print(f"  ⚠️ 警告：权重合计{weight_sum:.2%} 不等于 100%，请检查数据")
+    
+    print(f"  ✅ 读取完成：{len(df_latest)} 条持仓（日期：{latest_date.strftime('%Y-%m-%d')}）")
+    return df_latest.reset_index(drop=True)
 
 
 def load_index_weight_932006():
@@ -294,7 +336,7 @@ def align_and_save():
     # 加载交易数据（使用交易所成交查询文件）
     trades_df = load_trades_from_exchange_query()
     
-    # 加载持仓数据
+    # 加载持仓数据（时点数据）
     holdings_df = load_holdings()
     
     # 加载指数权重
@@ -363,5 +405,7 @@ if __name__ == "__main__":
         print(f"    交易类型分布:\n{trades_df['direction'].value_counts()}")
     if holdings_df is not None:
         print(f"  持仓数据：{holdings_df.shape}")
+        print(f"    持仓日期：{holdings_df['date'].iloc[0] if 'date' in holdings_df.columns else 'N/A'}")
+        print(f"    权重合计：{holdings_df['weight'].sum():.2%} if 'weight' in holdings_df.columns else 'N/A'}")
     if weight_df is not None:
         print(f"  指数权重：{weight_df['weight'].sum():.2%}")

@@ -58,10 +58,21 @@ def _annualized_vol(series: pd.Series, trading_days: int = 252) -> float:
     return float(daily_ret.std() * np.sqrt(trading_days))
 
 
-def calc_metrics(nav_df: pd.DataFrame, index_df: pd.DataFrame) -> dict:
-    """计算年化收益率、波动率、夏普比率、最大回撤、超额收益"""
+def calc_metrics(nav_df: pd.DataFrame, index_df: pd.DataFrame, base_date=None) -> dict:
+    """
+    计算年化收益率、波动率、夏普比率、最大回撤、超额收益
+    
+    base_date: 基准日，如果提供则只计算基准日之后的数据（与分月表现口径一致）
+    """
     nav = nav_df["nav"].dropna() if "nav" in nav_df.columns else pd.Series(dtype=float)
     idx = index_df["reits_index"].dropna() if "reits_index" in index_df.columns else pd.Series(dtype=float)
+    
+    # 如果提供了基准日，筛选数据（与分月表现口径一致）
+    if base_date is not None:
+        if not nav.empty:
+            nav = nav[nav.index >= base_date]
+        if not idx.empty:
+            idx = idx[idx.index >= base_date]
 
     metrics = {}
 
@@ -82,6 +93,10 @@ def calc_metrics(nav_df: pd.DataFrame, index_df: pd.DataFrame) -> dict:
 
     if "nav_ann_return" in metrics and "idx_ann_return" in metrics:
         metrics["excess_return"] = metrics["nav_ann_return"] - metrics["idx_ann_return"]
+    
+    # 添加基准日信息
+    if base_date is not None:
+        metrics["base_date"] = base_date.strftime("%Y-%m-%d")
 
     return metrics
 

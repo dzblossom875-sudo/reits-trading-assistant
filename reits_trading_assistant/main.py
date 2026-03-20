@@ -3,6 +3,7 @@ REITs 交易助手主入口
 """
 import sys
 import os
+import pandas as pd
 
 # 确保项目根目录在 sys.path 中
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -111,10 +112,14 @@ def main():
 
     # Step 6: 业绩分析
     print("\n[6/7] 业绩表现分析...")
-    metrics = calc_metrics(nav_df, daily_df)
+    # 传递 base_date，确保总体指标与分月表现口径一致
+    base_date = pd.to_datetime(config.BASE_DATE)
+    metrics = calc_metrics(nav_df, daily_df, base_date=base_date)
     for k, v in metrics.items():
         if isinstance(v, float) and not __import__("math").isnan(v):
             print(f"  {k}: {v:.4f}")
+    if "base_date" in metrics:
+        print(f"  计算基准日：{metrics['base_date']}")
 
     # 计算分月指标
     period_df = calc_metrics_by_period(daily_df)
