@@ -140,8 +140,12 @@ def load_trades_from_daily_report():
             # 根据交割金额符号判断买入/卖出
             amount = row.get("amount", 0)
             if pd.notna(amount):
-                # 交割金额为正=卖出（资金流入），为负=买入（资金流出）
-                return "sell" if amount > 0 else "buy"
+                # ⚠️ 重要：需要业务确认交割金额正负的定义
+                # 方案 A: 交割金额为正=卖出（资金流入），为负=买入（资金流出）
+                # 方案 B: 交割金额为正=买入（支出），为负=卖出（收入）
+                # 当前使用方案 A，如果数据相反请切换到方案 B
+                # return "buy" if amount > 0 else "sell"  # 方案 B
+                return "sell" if amount > 0 else "buy"  # 方案 A
         return "other"
 
     df["direction"] = df.apply(determine_direction, axis=1)

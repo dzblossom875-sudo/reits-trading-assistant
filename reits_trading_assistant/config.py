@@ -11,7 +11,7 @@ OUTPUT_REPORTS_DIR = os.path.join(OUTPUT_DIR, "reports")
 
 # 文件名配置（根据实际文件名调整）
 FILE_REITS_INFO = "沪深REITs.xlsx"
-FILE_INDEX = "指数.xlsx"
+FILE_INDEX = "932047.CSI.xlsx"  # 中证 REITs 全收益指数
 FILE_WEIGHT_932006 = "932006closeweight.xlsx"  # 932006收盘价指数权重
 FILE_HOLDINGS = "统计分析-持仓查询-组合持仓查询.xlsx"  # 持仓查询文件
 
@@ -30,7 +30,7 @@ ACCOUNT_NAME = "中诚信托-明珠76号"  # 用于报表表头显示
 BASE_DATE = "2025-12-31"  # 格式：YYYY-MM-DD
 
 # Wind API配置
-USE_WIND_API = True  # 是否优先使用Wind API获取行情
+USE_WIND_API = False  # 默认关闭，除非有 Wind 终端  # 是否优先使用Wind API获取行情
 WIND_CACHE_DAYS = 1  # Wind数据缓存天数
 
 # 证券代码处理
