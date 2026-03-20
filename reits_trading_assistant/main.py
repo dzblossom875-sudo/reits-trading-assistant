@@ -11,9 +11,9 @@ sys.path.insert(0, BASE_DIR)
 
 import config  # noqa: 触发目录创建
 
-from src.data_loader import align_and_save
+from src.data_loader import align_and_save, load_holdings_timeseries
 from src.sector_analysis import analyze_sector_trades, plot_sector_performance, plot_sector_rotation_dual, calc_sector_returns
-from src.trade_analysis import plot_trade_flow, plot_sector_rotation, save_trade_summary
+from src.trade_analysis import plot_trade_flow, plot_sector_rotation, save_trade_summary, plot_position_vs_index, summarize_trades
 from src.timing_analysis import analyze_timing, plot_timing_chart, save_timing_result
 from src.performance_analysis import calc_metrics, plot_nav_vs_index, save_performance_summary, calc_metrics_by_period
 from src.allocation_analysis import calc_allocation_bias, calc_sector_allocation_bias, save_allocation_bias
@@ -30,6 +30,13 @@ def main():
     # Step 1: 数据加载与整合
     print("\n[1/7] 数据加载与清洗...")
     reits_info, daily_df, nav_df, trades_df, holdings_df, weight_df = align_and_save()
+
+    # 加载日频持仓和净资产数据（用于仓位计算）
+    holdings_daily = load_holdings_timeseries()  # 日频持仓市值
+    net_assets = nav_df.get("net_assets") if nav_df is not None and "net_assets" in nav_df.columns else None
+    if net_assets is not None:
+        net_assets = pd.DataFrame({"net_assets": net_assets})
+
     print(f"  REITs 信息: {len(reits_info)} 条")
     print(f"  日频数据: {daily_df.shape}")
     if nav_df is not None:
@@ -39,7 +46,9 @@ def main():
         if "direction" in trades_df.columns:
             print(f"    交易类型: {trades_df['direction'].value_counts().to_dict()}")
     if holdings_df is not None:
-        print(f"  持仓数据: {holdings_df.shape}")
+        print(f"  持仓数据: {holdings_df.shape}（截面：{holdings_df['date'].iloc[0].strftime('%Y-%m-%d') if 'date' in holdings_df.columns else 'N/A'}）")
+    if holdings_daily is not None:
+        print(f"  持仓时序: {len(holdings_daily)} 天")
     if weight_df is not None:
         print(f"  指数权重: {len(weight_df)} 条, 总权重={weight_df['weight'].sum():.2%}")
 
@@ -92,11 +101,18 @@ def main():
 
     # Step 4: 交易分析
     print("\n[4/7] 交易行为分析...")
-    save_trade_summary(trades_df)
+    from src.trade_analysis import summarize_trades
+    daily_trades = summarize_trades(trades_df, holdings_daily, net_assets) if trades_df is not None else None
+    save_trade_summary(trades_df, holdings_daily, net_assets)
     print("  已保存: trade_summary.xlsx")
 
-    plot_trade_flow(trades_df, daily_df)
+    plot_trade_flow(trades_df, daily_df) if trades_df is not None else None
     print("  已生成: trade_flow.png")
+
+    # 仓位变动图
+    pos_path = plot_position_vs_index(daily_trades, daily_df) if daily_trades is not None else None
+    if pos_path:
+        print("  已生成: position_vs_index.png")
 
     # Step 5: 择时分析
     print("\n[5/7] 择时效果分析...")

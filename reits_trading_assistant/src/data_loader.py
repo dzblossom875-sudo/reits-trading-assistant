@@ -95,8 +95,16 @@ def load_nav_from_daily_report():
     nav_col = next((c for c in df_data.columns if "累计" in str(c) and "净值" in str(c)), None)
     if nav_col is None:
         nav_col = next((c for c in df_data.columns if "净值" in str(c)), None)
-    df_data = df_data[["date", nav_col]].rename(columns={nav_col:"nav"})
+    # 同时读取净资产（市值）用于仓位计算
+    net_assets_col = next((c for c in df_data.columns if "净资产" in str(c) and "市值" in str(c)), None)
+    keep_cols = ["date", nav_col] + ([net_assets_col] if net_assets_col else [])
+    rename = {nav_col: "nav"}
+    if net_assets_col:
+        rename[net_assets_col] = "net_assets"
+    df_data = df_data[keep_cols].rename(columns=rename)
     df_data["nav"] = pd.to_numeric(df_data["nav"], errors="coerce")
+    if "net_assets" in df_data.columns:
+        df_data["net_assets"] = pd.to_numeric(df_data["net_assets"], errors="coerce")
     df_clean = df_data[df_data["nav"].notna()].sort_values("date").drop_duplicates("date").set_index("date")
     print(f"  ✅ 读取完成：{len(df_clean)} 条")
     return df_clean
@@ -286,6 +294,31 @@ def load_holdings():
     
     print(f"  ✅ 读取完成：{len(df_latest)} 条持仓（日期：{latest_date.strftime('%Y-%m-%d')}）")
     return df_latest.reset_index(drop=True)
+
+
+def load_holdings_timeseries():
+    """
+    读取持仓查询文件全部日期，返回日频持仓市值汇总
+    用于仓位计算
+    """
+    filepath = os.path.join(config.DATA_RAW_DIR, config.FILE_HOLDINGS)
+    if not os.path.exists(filepath):
+        return None
+    df = pd.read_excel(filepath, sheet_name=config.SHEET_HOLDINGS, header=None, dtype=str)
+    col_map = {0: "date", 11: "code", 43: "market_value"}
+    df = df.rename(columns=col_map)
+    keep = [c for c in ["date", "code", "market_value"] if c in df.columns]
+    if not keep:
+        return None
+    df = df[keep].copy()
+    df["date"] = df["date"].apply(parse_date)
+    df = df[df["date"].notna()]
+    df["market_value"] = df["market_value"].apply(clean_number)
+    df = df[df["market_value"] >= 0]  # 过滤负数
+    # 按日汇总持仓市值
+    daily_mv = df.groupby("date")["market_value"].sum().reset_index()
+    daily_mv = daily_mv.sort_values("date").set_index("date")
+    return daily_mv
 
 
 def load_index_weight_932006():

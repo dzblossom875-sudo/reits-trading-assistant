@@ -76,25 +76,33 @@ def calc_metrics(nav_df: pd.DataFrame, index_df: pd.DataFrame, base_date=None) -
 
     metrics = {}
 
-    if not nav.empty:
+    # 计算绝对收益率（区间总收益）和年化指标
+    if not nav.empty and len(nav) > 1:
+        nav_total_ret = nav.iloc[-1] / nav.iloc[0] - 1
+        metrics["nav_total_return"] = nav_total_ret
         metrics["nav_ann_return"] = _annualized_return(nav)
         metrics["nav_ann_vol"] = _annualized_vol(nav)
-        rf = 0.02  # 无风险利率近似
+        rf = 0.02
         if metrics["nav_ann_vol"] and metrics["nav_ann_vol"] > 0:
             metrics["nav_sharpe"] = (metrics["nav_ann_return"] - rf) / metrics["nav_ann_vol"]
         else:
             metrics["nav_sharpe"] = np.nan
         metrics["nav_max_drawdown"] = _max_drawdown(nav)
 
-    if not idx.empty:
+    if not idx.empty and len(idx) > 1:
+        idx_total_ret = idx.iloc[-1] / idx.iloc[0] - 1
+        metrics["idx_total_return"] = idx_total_ret
         metrics["idx_ann_return"] = _annualized_return(idx)
         metrics["idx_ann_vol"] = _annualized_vol(idx)
         metrics["idx_max_drawdown"] = _max_drawdown(idx)
 
     if "nav_ann_return" in metrics and "idx_ann_return" in metrics:
         metrics["excess_return"] = metrics["nav_ann_return"] - metrics["idx_ann_return"]
-    
-    # 添加基准日信息
+
+    # 绝对超额收益
+    if "nav_total_return" in metrics and "idx_total_return" in metrics:
+        metrics["excess_total"] = metrics["nav_total_return"] - metrics["idx_total_return"]
+
     if base_date is not None:
         metrics["base_date"] = base_date.strftime("%Y-%m-%d")
 
@@ -104,14 +112,15 @@ def calc_metrics(nav_df: pd.DataFrame, index_df: pd.DataFrame, base_date=None) -
 def calc_metrics_by_period(daily_df: pd.DataFrame) -> pd.DataFrame:
     """
     按自然月计算指标：基准日至今、各自然月
-    返回DataFrame包含各期指标
+    逻辑：每月收益 = (本月末净值 / 上月末净值 - 1) * 100
+    注：若上月末无数据，则用该月第一个交易日的净值
     """
     df = daily_df.copy()
     df.index = pd.to_datetime(df.index)
     base_date = pd.to_datetime(config.BASE_DATE)
 
     # 筛选基准日之后的数据
-    df = df[df.index >= base_date]
+    df = df[df.index >= base_date].sort_index()
 
     results = []
 
@@ -119,26 +128,68 @@ def calc_metrics_by_period(daily_df: pd.DataFrame) -> pd.DataFrame:
     nav_series = df["nav"].dropna() if "nav" in df.columns else pd.Series(dtype=float)
     idx_series = df["reits_index"].dropna() if "reits_index" in df.columns else pd.Series(dtype=float)
 
-    if not nav_series.empty:
+    if not nav_series.empty and len(nav_series) > 1:
         results.append({
             "period": f"{base_date.strftime('%Y-%m-%d')}至今",
-            "nav_return": (nav_series.iloc[-1] / nav_series.iloc[0] - 1) * 100 if len(nav_series) > 1 else np.nan,
-            "idx_return": (idx_series.iloc[-1] / idx_series.iloc[0] - 1) * 100 if len(idx_series) > 1 else np.nan,
-            "excess": ((nav_series.iloc[-1] / nav_series.iloc[0]) - (idx_series.iloc[-1] / idx_series.iloc[0])) * 100 if len(nav_series) > 1 else np.nan,
+            "start_date": nav_series.index[0].strftime('%Y-%m-%d'),
+            "end_date": nav_series.index[-1].strftime('%Y-%m-%d'),
+            "nav_return": (nav_series.iloc[-1] / nav_series.iloc[0] - 1) * 100,
+            "idx_return": (idx_series.iloc[-1] / idx_series.iloc[0] - 1) * 100 if not idx_series.empty else np.nan,
+            "excess": ((nav_series.iloc[-1] / nav_series.iloc[0]) - (idx_series.iloc[-1] / idx_series.iloc[0])) * 100 if not idx_series.empty else np.nan,
         })
 
-    # 按自然月计算
+    # 按自然月计算：用上个月最后一天的净值作为基准
     df["year_month"] = df.index.to_period("M")
-    for ym, group in df.groupby("year_month"):
-        nav_m = group["nav"].dropna() if "nav" in group.columns else pd.Series(dtype=float)
-        idx_m = group["reits_index"].dropna() if "reits_index" in group.columns else pd.Series(dtype=float)
-        if not nav_m.empty and len(nav_m) > 1:
+    all_periods = sorted(df["year_month"].unique())
+
+    # 获取每个period最后一天的数据点
+    prev_nav_val = None
+    prev_idx_val = None
+
+    for i, ym in enumerate(all_periods):
+        group = df[df["year_month"] == ym].sort_index()
+        nav_m = group["nav"].dropna()
+        idx_m = group["reits_index"].dropna()
+
+        if not nav_m.empty:
+            nav_end = nav_m.iloc[-1]  # 本月末净值
+            nav_end_date = nav_m.index[-1]
+
+            if i == 0 or prev_nav_val is None:
+                # 第一个月：用该月第一个数据点作为起点（如果基准日在该月内）
+                nav_start = nav_m.iloc[0]
+                start_date = nav_m.index[0]
+            else:
+                # 非首月：用上月末净值作为起点
+                nav_start = prev_nav_val
+                start_date = nav_m.index[0]
+
+            # 计算本月收益率
+            nav_ret = (nav_end / nav_start - 1) * 100 if nav_start != 0 else np.nan
+
+            # 指数同理
+            idx_ret = np.nan
+            if not idx_m.empty:
+                idx_end = idx_m.iloc[-1]
+                if i == 0 or prev_idx_val is None:
+                    idx_start = idx_m.iloc[0]
+                else:
+                    idx_start = prev_idx_val
+                idx_ret = (idx_end / idx_start - 1) * 100 if idx_start != 0 else np.nan
+
             results.append({
                 "period": str(ym),
-                "nav_return": (nav_m.iloc[-1] / nav_m.iloc[0] - 1) * 100,
-                "idx_return": (idx_m.iloc[-1] / idx_m.iloc[0] - 1) * 100 if not idx_m.empty else np.nan,
-                "excess": ((nav_m.iloc[-1] / nav_m.iloc[0]) - (idx_m.iloc[-1] / idx_m.iloc[0])) * 100 if not idx_m.empty else np.nan,
+                "start_date": start_date.strftime('%Y-%m-%d'),
+                "end_date": nav_end_date.strftime('%Y-%m-%d'),
+                "nav_return": nav_ret,
+                "idx_return": idx_ret,
+                "excess": nav_ret - idx_ret if not np.isnan(idx_ret) else nav_ret,
             })
+
+            # 保存本月末值给下月使用
+            prev_nav_val = nav_end
+            if not idx_m.empty:
+                prev_idx_val = idx_m.iloc[-1]
 
     return pd.DataFrame(results)
 
@@ -227,44 +278,101 @@ def plot_nav_vs_index(daily_df: pd.DataFrame):
 def save_performance_summary(metrics: dict, period_df: pd.DataFrame = None):
     """
     保存业绩汇总到Excel，包含多个sheet：
-    - 总体指标
-    - 分月指标
+    - 总体指标（双列对比：明珠76号 vs 指数）
+    - 分月指标（含起止日期说明）
     """
     out_path = os.path.join(config.OUTPUT_DIR, "performance_summary.xlsx")
 
     with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
-        # Sheet 1: 总体指标
+        # Sheet 1: 总体指标（双列格式）
         rows = []
-        label_map = {
-            "nav_ann_return": f"{config.ACCOUNT_NAME}年化收益率",
-            "nav_ann_vol": f"{config.ACCOUNT_NAME}年化波动率",
-            "nav_sharpe": f"{config.ACCOUNT_NAME}夏普比率",
-            "nav_max_drawdown": f"{config.ACCOUNT_NAME}最大回撤",
-            "idx_ann_return": "指数年化收益率",
-            "idx_ann_vol": "指数年化波动率",
-            "idx_max_drawdown": "指数最大回撤",
-            "excess_return": "超额年化收益率",
-        }
-        for k, v in metrics.items():
-            label = label_map.get(k, k)
-            if isinstance(v, float) and not np.isnan(v):
-                if "return" in k or "vol" in k or "drawdown" in k or "excess" in k:
-                    display = f"{v * 100:.2f}%"
-                else:
-                    display = f"{v:.4f}"
-            else:
-                display = str(v)
-            rows.append({"指标": label, "数值": display})
+
+        # 区间总收益
+        nav_total = metrics.get("nav_total_return")
+        idx_total = metrics.get("idx_total_return")
+        if nav_total is not None or idx_total is not None:
+            rows.append({
+                "指标": "区间总收益率",
+                config.ACCOUNT_NAME: f"{nav_total*100:.2f}%" if nav_total is not None else "N/A",
+                "指数": f"{idx_total*100:.2f}%" if idx_total is not None else "N/A",
+            })
+
+        # 年化收益率
+        nav_ann = metrics.get("nav_ann_return")
+        idx_ann = metrics.get("idx_ann_return")
+        if nav_ann is not None or idx_ann is not None:
+            rows.append({
+                "指标": "年化收益率",
+                config.ACCOUNT_NAME: f"{nav_ann*100:.2f}%" if nav_ann is not None else "N/A",
+                "指数": f"{idx_ann*100:.2f}%" if idx_ann is not None else "N/A",
+            })
+
+        # 年化波动率
+        nav_vol = metrics.get("nav_ann_vol")
+        idx_vol = metrics.get("idx_ann_vol")
+        if nav_vol is not None or idx_vol is not None:
+            rows.append({
+                "指标": "年化波动率",
+                config.ACCOUNT_NAME: f"{nav_vol*100:.2f}%" if nav_vol is not None else "N/A",
+                "指数": f"{idx_vol*100:.2f}%" if idx_vol is not None else "N/A",
+            })
+
+        # 夏普比率（仅账户）
+        nav_sharpe = metrics.get("nav_sharpe")
+        if nav_sharpe is not None:
+            rows.append({
+                "指标": "夏普比率",
+                config.ACCOUNT_NAME: f"{nav_sharpe:.4f}" if nav_sharpe is not None else "N/A",
+                "指数": "N/A",
+            })
+
+        # 最大回撤
+        nav_dd = metrics.get("nav_max_drawdown")
+        idx_dd = metrics.get("idx_max_drawdown")
+        if nav_dd is not None or idx_dd is not None:
+            rows.append({
+                "指标": "最大回撤",
+                config.ACCOUNT_NAME: f"{nav_dd*100:.2f}%" if nav_dd is not None else "N/A",
+                "指数": f"{idx_dd*100:.2f}%" if idx_dd is not None else "N/A",
+            })
+
+        # 超额收益
+        excess = metrics.get("excess_return")
+        if excess is not None:
+            rows.append({
+                "指标": "超额年化收益率",
+                config.ACCOUNT_NAME: f"{excess*100:.2f}%" if excess is not None else "N/A",
+                "指数": "N/A",
+            })
+
+        # 基准日
+        base_date = metrics.get("base_date")
+        if base_date:
+            rows.append({
+                "指标": "计算基准日",
+                config.ACCOUNT_NAME: base_date,
+                "指数": base_date,
+            })
 
         result_df = pd.DataFrame(rows)
         result_df.to_excel(writer, sheet_name="总体指标", index=False)
 
-        # Sheet 2: 分月指标
+        # Sheet 2: 分月指标（含起止日期）
         if period_df is not None and not period_df.empty:
             display_df = period_df.copy()
             for col in ["nav_return", "idx_return", "excess"]:
                 if col in display_df.columns:
                     display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
+            # 重命名列更清晰
+            col_rename = {
+                "period": "期间",
+                "start_date": "起始日",
+                "end_date": "结束日",
+                "nav_return": f"{config.ACCOUNT_NAME}收益",
+                "idx_return": "指数收益",
+                "excess": "超额收益",
+            }
+            display_df = display_df.rename(columns=col_rename)
             display_df.to_excel(writer, sheet_name="分月表现", index=False)
 
     return out_path

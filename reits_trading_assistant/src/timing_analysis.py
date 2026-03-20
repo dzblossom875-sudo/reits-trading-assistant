@@ -29,7 +29,13 @@ _setup_font()
 
 
 def analyze_timing(trades_df: pd.DataFrame, index_df: pd.DataFrame) -> pd.DataFrame:
-    """计算每次大幅加减仓后5/10/20日指数涨跌幅，统计胜率"""
+    """
+    计算每次大幅加减仓后5/10/20日指数涨跌幅，统计胜率
+
+    heavy_buy 定义: 日净买入金额 > 正净买入的75分位数
+    heavy_sell 定义: 日净卖出金额 < 负净卖出的75分位数(绝对值)
+    ret_5d 计算: (事件日后第5个交易日指数 / 事件日指数 - 1) * 100
+    """
     from src.trade_analysis import summarize_trades
     daily = summarize_trades(trades_df)
     daily["date"] = pd.to_datetime(daily["date"])
