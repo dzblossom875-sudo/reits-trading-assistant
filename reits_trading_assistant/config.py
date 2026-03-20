@@ -18,6 +18,9 @@ FILE_HOLDINGS = "统计分析-持仓查询-组合持仓查询.xlsx"  # 持仓查
 # 日报表配置：自动读取input目录下最新日期的日报表
 DAILY_REPORT_PATTERN = "日报表_*.xlsx"
 
+# 交易所成交查询文件（优先使用）
+FILE_EXCHANGE_TRADES = "统计分析 - 交易查询*.csv"
+
 # Sheet 名配置
 SHEET_NAV = "净值时间序列"
 SHEET_TRADES = "交易明细表"  # 日报表中的交易明细sheet
