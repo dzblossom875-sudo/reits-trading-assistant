@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-03-21 - `5ddf351`
+
+**工具**: Cursor
+
+### 新增功能
+- **feat(performance)**: 新增 `save_daily_tracking()` 逐日跟踪表（归一化净值+仓位，非交易日前值填充）
+- **feat(performance)**: 新增 `plot_position_change_vs_index()` 仓位变动 vs 指数图
+- **feat(trade)**: 新增 `plot_net_buy_vs_index()` 净买入 vs 指数图
+- **feat(trade)**: `summarize_trades()` 增加 `position_change` 仓位变动列
+- **feat(performance)**: 指数夏普比率计算（原仅账户），Rf 统一为 1.85%
+
+### 修复问题
+- **fix(trade_analysis)**: `plot_trade_flow()` 左右轴互换（左=指数加粗，右=买卖）
+- **fix(report_generator)**: 报告无数据 - 改为 `generate_report(**kwargs)` 直接接收内存数据
+- **fix(performance)**: 夏普比率无风险收益率 2% → 1.85%
+
+### 文档
+- **docs**: 同步 Wind API 默认开启决策记录
+- **docs**: 更新夏普比率公式说明（Rf=1.85%，含指数）
+
+### 关联文件
+- `reits_trading_assistant/main.py`
+- `reits_trading_assistant/src/performance_analysis.py`
+- `reits_trading_assistant/src/trade_analysis.py`
+- `reits_trading_assistant/src/report_generator.py`
+- `docs/decisions.md`
+- `docs/summary.md`
+
+---
+
 ## 2026-03-20 - `44037ad`
 
 **工具**: Claude Code

@@ -3,13 +3,13 @@
 > 跨工具协作主文件。每次开始工作前先读此文件，结束后必须更新。
 
 ## 🔄 当前状态
-- **最后操作工具**：Claude Code
-- **最后操作**：MD文件整理合并完毕，已删除 docs/memory.md、FIXES_SUMMARY.md、REVIEW_REPORT.md
-- **最后 Commit**：`9bc8f4c`
+- **最后操作工具**：Cursor
+- **最后操作**：新增逐日跟踪表/仓位变动图/净买入图，修复报告无数据，补全指数夏普，trade_flow图左右轴互换
+- **最后 Commit**：`5ddf351`
 - **待续事项**：
-  - [ ] B工具读取 docs/summary.md，检查结论是否完整
-  - [ ] 补全缺失的决策理由（如：为什么用累计净值而非单位净值）
-  - [ ] 验证交易方向判断逻辑（交割金额正负与买卖方向的对应关系）
+  - [ ] 验证 daily_tracking.xlsx 仓位数据覆盖率（持仓时序仅30天，跟踪表80天）
+  - [ ] sector_analysis.py resample('M') 警告改为 'ME'
+  - [ ] 考虑将 output 历史目录清理或归档策略
 
 ## 📐 架构快照
 
@@ -22,8 +22,8 @@
 | 模块 | 职责 | 关键函数 |
 |------|------|----------|
 | `data_loader.py` | 数据加载与清洗 | `align_and_save()`, `load_holdings_timeseries()` |
-| `trade_analysis.py` | 交易行为分析 | `summarize_trades()`, `plot_position_vs_index()` |
-| `performance_analysis.py` | 业绩归因 | `calc_metrics()`, `calc_metrics_by_period()` |
+| `trade_analysis.py` | 交易行为分析 | `summarize_trades()`, `plot_trade_flow()`, `plot_net_buy_vs_index()` |
+| `performance_analysis.py` | 业绩归因 | `calc_metrics()`, `save_daily_tracking()`, `plot_position_change_vs_index()` |
 | `timing_analysis.py` | 择时效果评估 | `analyze_timing()` |
 | `sector_analysis.py` | 板块轮动 | `plot_sector_rotation_dual()` |
 | `allocation_analysis.py` | 配置偏移 | `calc_allocation_bias()` |
@@ -86,6 +86,41 @@ raw/交易所成交.xlsx  ──┘
 - **避坑指南**：胜率统计需检查样本数是否为 0，避免除零或空值
 - **Commit**：`44037ad`
 
+### 2026-03-21 - Cursor
+
+#### [业绩分析] 逐日跟踪表与仓位变动图
+- **模块**：`src/performance_analysis.py`
+- **逻辑变更**：
+  - 新增 `save_daily_tracking()` 输出归一化净值+仓位的逐日表
+  - 非交易日用前值填充（`reindex + ffill`），消除指数断档
+  - 新增 `plot_position_change_vs_index()` 仓位变动 vs 指数图
+  - 夏普比率无风险收益率 2% → 1.85%，新增指数夏普计算
+- **避坑指南**：
+  - 非交易日填充用 `pd.date_range + ffill`，不能用 `resample` 否则会生成空行
+  - 仓位变动 `diff()` 在前值填充后会包含非交易日的0变动，属正常
+- **Commit**：`5ddf351`
+
+#### [交易分析] 资金流向图改版 + 净买入图
+- **模块**：`src/trade_analysis.py`
+- **逻辑变更**：
+  - `plot_trade_flow()` 左右轴互换：左轴指数(加粗)，右轴买卖
+  - 新增 `plot_net_buy_vs_index()` 净买入 vs 指数图
+  - `summarize_trades()` 增加 `position_change` 列
+- **避坑指南**：
+  - 双轴图指数在左轴时需手动设置 ylim 留出余量，避免柱状图遮挡
+- **Commit**：`5ddf351`
+
+#### [报告生成] 修复无数据问题
+- **模块**：`src/report_generator.py`
+- **逻辑变更**：
+  - 根因：报告读 CSV 文件但实际输出为 XLSX → 全部读空
+  - 改为 `generate_report(**kwargs)` 直接接收内存数据
+  - 新增分月表现、配置偏移完整表格
+- **避坑指南**：
+  - 报告生成应在所有分析完成后调用，确保数据变量可用
+  - 不要依赖中间文件格式，直接传递 DataFrame 更可靠
+- **Commit**：`5ddf351`
+
 ---
 
 ## 🔗 关联文档
@@ -99,4 +134,4 @@ raw/交易所成交.xlsx  ──┘
 
 ---
 
-*最后更新：2026-03-20*
+*最后更新：2026-03-21*
