@@ -162,6 +162,8 @@ def plot_sector_rotation_dual(trades_df: pd.DataFrame, reits_prices: pd.DataFram
     1. 月度净买入热力图
     2. 月度涨跌幅热力图（如果有价格数据）
     """
+    if trades_df is None or trades_df.empty:
+        return None, None
     df = trades_df.copy()
     df["date"] = pd.to_datetime(df["date"])
     if "sector" not in df.columns:

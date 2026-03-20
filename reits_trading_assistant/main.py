@@ -59,8 +59,12 @@ def main():
 
     # Step 3: 板块分析
     print("\n[3/7] 板块分析...")
-    sector_result = analyze_sector_trades(trades_df, reits_info)
-    print(f"  板块数量: {len(sector_result)}")
+    if trades_df is None:
+        print("  ⚠️ 无交易数据，跳过板块交易分析")
+        sector_result = pd.DataFrame()
+    else:
+        sector_result = analyze_sector_trades(trades_df, reits_info)
+        print(f"  板块数量: {len(sector_result)}")
 
     # 计算板块区间涨跌幅
     sector_returns = None

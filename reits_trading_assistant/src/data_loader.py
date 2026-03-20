@@ -106,20 +106,25 @@ def load_nav_from_daily_report():
 
 def load_trades_from_exchange_query():
     """从交易所成交查询文件读取交易数据"""
-    pattern = os.path.join(config.DATA_RAW_DIR, "统计分析 - 交易查询*.csv")
-    files = glob.glob(pattern)
-    
+    files = (
+        glob.glob(os.path.join(config.DATA_RAW_DIR, "统计分析*交易查询*.csv")) +
+        glob.glob(os.path.join(config.DATA_RAW_DIR, "统计分析*交易查询*.xlsx"))
+    )
+
     if not files:
         print("⚠️ 未找到交易所成交查询文件")
         return None
-    
+
     latest_file = max(files, key=os.path.getmtime)
     print(f"📖 读取交易所成交查询：{os.path.basename(latest_file)}")
     
     try:
-        df = pd.read_csv(latest_file, sep=None, engine='python', dtype=str)
+        if latest_file.endswith('.xlsx') or latest_file.endswith('.xls'):
+            df = pd.read_excel(latest_file, dtype=str)
+        else:
+            df = pd.read_csv(latest_file, sep=None, engine='python', dtype=str)
     except Exception as e:
-        print(f"❌ 读取 CSV 失败：{e}")
+        print(f"❌ 读取交易文件失败：{e}")
         return None
     
     col_map = {}
@@ -129,9 +134,11 @@ def load_trades_from_exchange_query():
         elif "证券名称" in col_str or "简称" in col_str or "名称" == col_str: col_map["name"] = col
         elif "委托方向" in col_str or "方向" in col_str: col_map["direction"] = col
         elif "成交价格" in col_str or "价格" == col_str: col_map["price"] = col
-        elif "成交数量" in col_str or "数量" == col_str: col_map["quantity"] = col
-        elif "成交金额" in col_str or "金额" == col_str: col_map["amount"] = col
-        elif "业务日期" in col_str or "日期" in col_str: col_map["date"] = col
+        elif col_str == "成交数量" or "成交数量(股" in col_str: col_map["quantity"] = col
+        elif col_str == "成交金额" or (col_str.startswith("成交金额") and "amount" not in col_map): col_map["amount"] = col
+        elif col_str == "全价成交金额" and "amount" not in col_map: col_map["amount"] = col
+        elif "业务日期" in col_str: col_map["date"] = col
+        elif "日期" in col_str and "date" not in col_map: col_map["date"] = col
     
     print(f"  列映射：{col_map}")
     df = df.rename(columns={v:k for k,v in col_map.items()})
@@ -406,6 +413,6 @@ if __name__ == "__main__":
     if holdings_df is not None:
         print(f"  持仓数据：{holdings_df.shape}")
         print(f"    持仓日期：{holdings_df['date'].iloc[0] if 'date' in holdings_df.columns else 'N/A'}")
-        print(f"    权重合计：{holdings_df['weight'].sum():.2%} if 'weight' in holdings_df.columns else 'N/A'}")
+        print(f"    权重合计：{holdings_df['weight'].sum():.2%}" if 'weight' in holdings_df.columns else "    权重合计：N/A")
     if weight_df is not None:
         print(f"  指数权重：{weight_df['weight'].sum():.2%}")
