@@ -1,0 +1,86 @@
+# 📋 CHANGELOG
+
+> 完整修改历史，每次归档自动追加，禁止修改已有条目。
+
+---
+
+## 2026-03-20 - `44037ad`
+
+**工具**: Claude Code
+
+### 新增功能
+- **feat**: 新增 `load_holdings_timeseries()` 支持日频仓位计算
+- **feat**: 新增 `plot_position_vs_index()` 仓位vs指数双轴图
+- **feat**: trade_summary 增加仓位(%)列和"总结"sheet
+
+### 修复问题
+- **fix(data_loader)**: 修复交易文件列映射优先级（业务日期/成交金额等）
+- **fix(trade_analysis)**: 分离 heavy_buy/sell 阈值计算（正/负分位数独立）
+- **fix(performance_analysis)**: 总体指标双列格式，分月起止逻辑修正
+- **fix(timing_analysis)**: 卖出胜率计算（原阈值导致样本数为0）
+- **fix(data_loader)**: f-string语法错误（单大括号不匹配）
+- **fix(sector_analysis)**: 空交易数据保护，避免空数组max崩溃
+
+### 文档
+- **docs**: 新建项目记忆文档 `docs/memory.md`，记录开发日志、避坑指南、计算口径
+
+### 关联文件
+- `src/data_loader.py`
+- `src/trade_analysis.py`
+- `src/performance_analysis.py`
+- `src/timing_analysis.py`
+- `src/sector_analysis.py`
+- `main.py`
+- `docs/memory.md`
+
+---
+
+## 2026-03-20 - `ebde5d8`
+
+**工具**: Claude Code
+
+### 修复问题
+- **fix**: 修复交易文件读取和空数据保护
+- **fix(data_loader)**: 修正交易文件glob模式，支持xlsx和csv
+- **fix(data_loader)**: 修正列映射被同名列覆盖问题
+- **fix(sector_analysis)**: plot_sector_rotation_dual增加空DataFrame保护
+- **fix(main)**: analyze_sector_trades增加trades_df为None时的跳过逻辑
+
+---
+
+## 2026-03-20 - `c47b8c0`
+
+**工具**: 外部合并
+
+### 修复问题
+- **fix**: 解决合并冲突，使用最新版本
+
+---
+
+## 2026-03-20 - `db9ea63`
+
+**工具**: 外部提交
+
+### 修复问题
+- **fix(data_loader)**: 修复 `load_holdings()` 函数
+  - 使用正确的列映射（A列日期，L列代码，P列权重，AR列市值）
+  - 获取最新日期的持仓（时点数据）
+  - 检查负数持仓并报错
+  - 验证权重合计
+- **fix(performance_analysis)**: 修复 `calc_metrics()` 函数
+  - 添加 base_date 参数，统一与分月表现的口径
+  - 只计算基准日之后的数据
+- **fix(main)**: 更新业绩分析调用
+  - 传递 base_date 参数
+  - 添加基准日信息输出
+
+---
+
+## 2026-03-20 - Initial
+
+**工具**: Claude Code
+
+### 初始化
+- 全套模块初始化开发完成
+- 建立从原始数据到可视化报告的完整流程
+- 输出: 4个processed CSV + 5张图表 + 1个Markdown报告
