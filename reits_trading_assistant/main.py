@@ -19,8 +19,6 @@ from src.allocation_analysis import calc_allocation_bias, calc_sector_allocation
 from src.wind_data_loader import load_reits_prices_with_fallback, load_index_data_with_fallback
 from src.report_generator import generate_report
 
-from datetime import date
-
 
 def main():
     print("=" * 60)
@@ -143,7 +141,7 @@ def main():
 
     # Step 8: 报告生成
     print("\n[8/8] 生成分析报告...")
-    report_path = generate_report(date.today().strftime("%Y%m%d"))
+    report_path = generate_report(config.RUN_TIMESTAMP)
     print(f"  报告已生成: {report_path}")
 
     print("\n" + "=" * 60)

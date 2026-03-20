@@ -120,7 +120,7 @@ def load_trades_from_exchange_query():
     - 成交金额
     """
     # 查找最新的交易所成交查询文件
-    pattern = os.path.join(config.DATA_RAW_DIR, "统计分析 - 交易查询*.csv")
+    pattern = os.path.join(config.DATA_RAW_DIR, config.FILE_EXCHANGE_TRADES)
     files = glob.glob(pattern)
     
     if not files:
@@ -146,9 +146,9 @@ def load_trades_from_exchange_query():
         elif "证券名称" in col_str or "简称" in col_str or "名称" == col_str: col_map["name"] = col
         elif "委托方向" in col_str or "方向" in col_str: col_map["direction"] = col
         elif "成交价格" in col_str or "价格" == col_str: col_map["price"] = col
-        elif "成交数量" in col_str or "数量" == col_str: col_map["quantity"] = col
-        elif "成交金额" in col_str or "金额" == col_str: col_map["amount"] = col
-        elif "业务日期" in col_str or "日期" in col_str: col_map["date"] = col
+        elif col_str.startswith("成交数量") or "数量" == col_str: col_map["quantity"] = col
+        elif ("成交金额" in col_str or "金额" == col_str) and "amount" not in col_map: col_map["amount"] = col
+        elif ("业务日期" in col_str or "日期" in col_str) and "date" not in col_map: col_map["date"] = col
     
     print(f"  列映射：{col_map}")
     
