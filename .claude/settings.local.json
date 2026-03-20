@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where python:*)",
+      "Bash(where python3:*)",
+      "Bash(ls /c/Python*)",
+      "Bash(ls /d/Python*)",
+      "Read(//c/Users/lenovo/AppData/Local/Programs/**)",
+      "Read(//d//**)",
+      "Read(//c/ProgramData/**)",
+      "Bash(reg query:*)",
+      "Bash(/d/Users/lenovo/anaconda3/python.exe --version)",
+      "Bash(/d/install/python.exe --version)",
+      "Bash(PYTHON=\"/d/install/python.exe\")",
+      "Bash($PYTHON src/data_loader.py)",
+      "Bash(\"D:/install/python.exe\" src/data_loader.py)",
+      "Bash(D:/install/python.exe -c \"\nimport pandas as pd\nfile = 'D:/AI投研工具/Claude Code/fupan/reits_trading_assistant/data/raw/932006closeweight.xls'\ndf = pd.read_html\\(file\\)[0]\nprint\\('Columns:', df.columns.tolist\\(\\)\\)\nprint\\('Shape:', df.shape\\)\nprint\\(df.head\\(3\\)\\)\n\")",
+      "Bash(D:/install/python.exe -c \"\nimport pandas as pd\nfile = 'D:/AI投研工具/Claude Code/fupan/reits_trading_assistant/data/raw/沪深REITs.xlsx'\ndf = pd.read_excel\\(file\\)\nprint\\('Columns:', df.columns.tolist\\(\\)\\)\nprint\\(df.head\\(10\\)\\)\n\")",
+      "Bash(chcp:*)",
+      "Bash(D:/install/python.exe -c \"\nimport sys\nsys.path.insert\\(0, 'D:/AI投研工具/Claude Code/fupan/reits_trading_assistant'\\)\nfrom src.data_loader import load_trades_from_daily_report, load_holdings\ntrades = load_trades_from_daily_report\\(\\)\nholdings = load_holdings\\(\\)\nprint\\('=== 交易数据方向分布 ==='\\)\nprint\\(trades['direction'].value_counts\\(\\)\\)\nprint\\(\\)\nprint\\('=== 持仓数据前5条 ==='\\)\nprint\\(holdings[['code', 'name', 'market_value']].head\\(\\)\\)\n\")"
+    ]
+  }
+}
