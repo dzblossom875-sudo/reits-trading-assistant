@@ -1,0 +1,13 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.class
+
+# Data & Output
+data/processed/*
+data/raw/*.xlsx
+data/raw/~$*
+output/figures/*
+output/reports/*
+output/*.xlsx
+output/*/
