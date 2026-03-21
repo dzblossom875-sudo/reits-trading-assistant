@@ -211,7 +211,7 @@ def plot_sector_rotation_dual(trades_df: pd.DataFrame, reits_prices: pd.DataFram
             if len(sector_df) < 2:
                 continue
             # 计算月度收益
-            monthly = sector_df.resample('M').last()
+            monthly = sector_df.resample('ME').last()
             monthly_ret = monthly.pct_change().dropna() * 100
             for month, ret in monthly_ret.items():
                 sector_monthly.append({
