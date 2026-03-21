@@ -4,6 +4,48 @@
 
 ---
 
+## 2026-03-22 00:00 - `36954b5`
+
+**工具**：Claude Code
+
+### Parquet 防腐层建立（架构升级）
+- **feat(data_loader)**: `save_merged_daily()` 新增非交易日插值逻辑
+  - 净值、仓位数据：非交易日沿用前一交易日（ffill）
+  - 仓位变动：基于 ffill 后的仓位逐日重新计算 diff
+  - 买入/卖出/红利/净买入：非交易日保持 NaN（不插值）
+  - 输出 `daily_master.parquet` 到 `data/processed/` 固定路径
+- **feat(allocation_analysis)**: `save_allocation_bias()` 新增 Parquet 输出
+  - `allocation_bias_sector.parquet`（板块偏移）
+  - `allocation_bias_detail.parquet`（个券偏移）
+  - 保存前执行 `.ffill()` 保证数据连贯性
+- **feat(performance_analysis)**: `save_performance_summary()` 新增 Parquet 输出
+  - `performance_summary_metrics.parquet`（总体指标，转置格式）
+  - `performance_summary_monthly.parquet`（分月表现）
+  - 过滤单日月份（如 2025-12-31 至 2025-12-31）
+
+### 数据修正
+- **fix(trade_analysis)**: `save_trade_summary()` 删除"持仓市值(万)"列（数据不准确）
+- **fix(performance_analysis)**: `calc_metrics_by_period()` 跳过起止日期相同的单月记录
+
+### Streamlit Dashboard（新增模块）
+- **feat**: 新增 `dashboard.py` 交互式看板，6大模块：
+  1. 核心趋势归因（净值 vs 指数 + 超额面积图）
+  2. 调仓意图扫描仪（仓位变动 ppt）
+  3. 实际仓位水位监控
+  4. 板块配置偏移（水平柱状图）
+  5. 分月表现对比
+  6. 板块操作归因气泡图（四象限诊断）
+- **feat**: 所有数据源改为从 `data/processed/*.parquet` 读取，不再依赖带时间戳的输出目录
+
+### 关联文件
+- `reits_trading_assistant/src/data_loader.py`
+- `reits_trading_assistant/src/allocation_analysis.py`
+- `reits_trading_assistant/src/performance_analysis.py`
+- `reits_trading_assistant/src/trade_analysis.py`
+- `reits_trading_assistant/dashboard.py`
+
+---
+
 ## 2026-03-21 20:40 - 分支合并归档
 
 **工具**：Claude Code

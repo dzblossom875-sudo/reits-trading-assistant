@@ -98,7 +98,43 @@
 
 ---
 
-## 输出文件清单（2026-03-21 更新）
+## Parquet 防腐层（2026-03-22 新增）
+
+为支持 Streamlit Dashboard 独立运行，所有核心数据同时输出到固定路径 `data/processed/*.parquet`：
+
+| 文件 | 来源 | 用途 |
+|------|------|------|
+| `daily_master.parquet` | `save_merged_daily()` | 主表（净值/指数/仓位/交易），1213天 |
+| `allocation_bias_sector.parquet` | `save_allocation_bias()` | 板块配置偏移 |
+| `allocation_bias_detail.parquet` | `save_allocation_bias()` | 个券配置偏移 |
+| `performance_summary_metrics.parquet` | `save_performance_summary()` | 总体指标（转置格式） |
+| `performance_summary_monthly.parquet` | `save_performance_summary()` | 分月表现 |
+
+### 非交易日插值规则（daily_master）
+- **净值、仓位**：沿用前一交易日（ffill）
+- **仓位变动**：基于 ffill 后的仓位逐日重新计算 diff
+- **买入/卖出/红利/净买入**：非交易日保持 NaN（不插值）
+
+---
+
+## Streamlit Dashboard（2026-03-22 新增）
+
+交互式看板 `dashboard.py`，6大模块：
+1. **核心趋势归因**：净值 vs 指数 + 超额面积图
+2. **调仓意图扫描仪**：仓位变动 ppt（柱状图）
+3. **实际仓位水位**：仓位面积图 + 指数对照
+4. **板块配置偏移**：水平柱状图（超配/低配）
+5. **分月表现对比**：账户 vs 指数（分组柱状图）
+6. **板块操作归因**：气泡图四象限诊断（买对了/卖对了/买套了/卖飞了）
+
+**启动命令**：
+```bash
+streamlit run dashboard.py
+```
+
+---
+
+## 输出文件清单（2026-03-22 更新）
 
 | 文件 | 内容 | 备注 |
 |------|------|------|
@@ -157,4 +193,4 @@ rm data/processed/wind_prices_cache.csv
 
 ---
 
-*最后更新：2026-03-21 18:40*
+*最后更新：2026-03-22 00:00*
