@@ -543,13 +543,15 @@ def save_merged_daily(full_df: pd.DataFrame, daily_trades: pd.DataFrame,
     df = df.rename(columns=rename)
     # 保留已有列，按顺序排列，忽略缺失列
     df = df[[c for c in col_order if c in df.columns]]
+    date_min = df.index.min().strftime("%Y-%m-%d")
+    date_max = df.index.max().strftime("%Y-%m-%d")
+    df.index = df.index.strftime("%Y-%m-%d")
     df.index.name = "日期"
 
     out_path = os.path.join(out_dir, "daily_master.xlsx")
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="逐日数据")
-    print(f"  已保存: daily_master.xlsx（{len(df)} 天，"
-          f"{df.index.min().date()} ~ {df.index.max().date()}）")
+    print(f"  已保存: daily_master.xlsx（{len(df)} 天，{date_min} ~ {date_max}）")
     return out_path
 
 

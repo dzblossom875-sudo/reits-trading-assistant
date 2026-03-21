@@ -92,16 +92,23 @@ def save_allocation_bias(detail_df: pd.DataFrame, sector_df: pd.DataFrame, outpu
     out_path = os.path.join(output_dir, "allocation_bias.xlsx")
     with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
         if detail_df is not None:
-            # 格式化百分比
             display_df = detail_df.copy()
             for col in ["account_weight", "index_weight", "weight_bias"]:
                 if col in display_df.columns:
                     display_df[col] = display_df[col].apply(lambda x: f"{x:.2%}")
+            display_df = display_df.rename(columns={
+                "code": "证券代码", "name": "证券名称", "sector": "板块",
+                "account_weight": "账户权重", "index_weight": "指数权重", "weight_bias": "偏移",
+            })
             display_df.to_excel(writer, sheet_name="个券配置偏移", index=False)
         if sector_df is not None:
             display_df = sector_df.copy()
             for col in ["account_weight", "index_weight", "weight_bias"]:
                 if col in display_df.columns:
                     display_df[col] = display_df[col].apply(lambda x: f"{x:.2%}")
+            display_df = display_df.rename(columns={
+                "sector": "板块", "account_weight": "账户权重",
+                "index_weight": "指数权重", "weight_bias": "偏移",
+            })
             display_df.to_excel(writer, sheet_name="板块配置偏移", index=False)
     return out_path

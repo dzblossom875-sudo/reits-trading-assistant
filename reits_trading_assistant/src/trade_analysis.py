@@ -389,13 +389,15 @@ def save_trade_summary(trades_df: pd.DataFrame, holdings_daily: pd.DataFrame = N
     daily = summarize_trades(trades_df, holdings_daily, net_assets)
     out_path = os.path.join(config.OUTPUT_DIR, "trade_summary.xlsx")
 
+    _signal_cn = {"heavy_buy": "大幅加仓", "heavy_sell": "大幅减仓", "neutral": "中性"}
+    _dir_cn    = {"buy": "买入", "sell": "卖出", "dividend": "红利", "other": "其他"}
+
     with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
         # Sheet 1: 日度汇总
         display_df = daily.copy()
         for col in ["buy_amount", "sell_amount", "dividend_amount", "net_amount"]:
             if col in display_df.columns:
                 display_df[col] = display_df[col].apply(lambda x: f"{x/1e4:.2f}" if pd.notna(x) else "")
-        # 仓位比例格式化
         if "position_pct" in display_df.columns:
             display_df["仓位(%)"] = display_df["position_pct"].apply(lambda x: f"{x*100:.2f}" if pd.notna(x) else "")
             display_df = display_df.drop(columns=["position_pct"])
@@ -408,23 +410,31 @@ def save_trade_summary(trades_df: pd.DataFrame, holdings_daily: pd.DataFrame = N
         if "net_assets" in display_df.columns:
             display_df["净资产(万)"] = display_df["net_assets"].apply(lambda x: f"{x/1e4:.2f}" if pd.notna(x) else "")
             display_df = display_df.drop(columns=["net_assets"])
-
-        # 按日期降序排列，方便查看最新
-        display_df = display_df.sort_values("date", ascending=False)
+        # 列名中文化
+        display_df = display_df.rename(columns={
+            "date": "日期", "buy_amount": "买入(万)", "sell_amount": "卖出(万)",
+            "dividend_amount": "红利(万)", "net_amount": "净买入(万)",
+            "trade_count": "交易笔数", "signal": "信号",
+        })
+        if "信号" in display_df.columns:
+            display_df["信号"] = display_df["信号"].map(_signal_cn).fillna(display_df["信号"])
+        if "日期" in display_df.columns:
+            display_df["日期"] = pd.to_datetime(display_df["日期"]).dt.strftime("%Y-%m-%d")
+        display_df = display_df.sort_values("日期", ascending=False)
         display_df.to_excel(writer, sheet_name="日度汇总", index=False)
 
         # Sheet 2: 总结（含阈值说明）
         summary_rows = []
         if hasattr(daily, 'attrs'):
             if "buy_threshold" in daily.attrs:
-                summary_rows.append({"项目": "heavy_buy阈值", "数值": f"{daily.attrs['buy_threshold']/1e4:.1f}万", "说明": "日净买入大于75分位数"})
+                summary_rows.append({"项目": "大幅加仓阈值", "数值": f"{daily.attrs['buy_threshold']/1e4:.1f}万", "说明": "日净买入大于75分位数"})
             if "sell_threshold" in daily.attrs:
-                summary_rows.append({"项目": "heavy_sell阈值", "数值": f"{daily.attrs['sell_threshold']/1e4:.1f}万", "说明": "日净卖出小于75分位数"})
+                summary_rows.append({"项目": "大幅减仓阈值", "数值": f"{daily.attrs['sell_threshold']/1e4:.1f}万", "说明": "日净卖出小于75分位数"})
 
         summary_rows.append({"项目": "交易记录数", "数值": len(trades_df), "说明": "含买入/卖出/红利"})
         summary_rows.append({"项目": "交易日期数", "数值": daily["date"].nunique(), "说明": "有交易发生的天数"})
-        summary_rows.append({"项目": "heavy_buy天数", "数值": len(daily[daily["signal"]=="heavy_buy"]), "说明": ""})
-        summary_rows.append({"项目": "heavy_sell天数", "数值": len(daily[daily["signal"]=="heavy_sell"]), "说明": ""})
+        summary_rows.append({"项目": "大幅加仓天数", "数值": len(daily[daily["signal"]=="heavy_buy"]), "说明": ""})
+        summary_rows.append({"项目": "大幅减仓天数", "数值": len(daily[daily["signal"]=="heavy_sell"]), "说明": ""})
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name="总结", index=False)
 
         # Sheet 3: 红利明细
@@ -433,6 +443,15 @@ def save_trade_summary(trades_df: pd.DataFrame, holdings_daily: pd.DataFrame = N
             for col in ["quantity", "price", "amount"]:
                 if col in dividend_df.columns:
                     dividend_df[col] = dividend_df[col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+            dividend_df = dividend_df.rename(columns={
+                "date": "日期", "code": "证券代码", "name": "证券名称",
+                "direction": "交易方向", "price": "价格(元)",
+                "quantity": "数量(份)", "amount": "金额(元)",
+            })
+            if "交易方向" in dividend_df.columns:
+                dividend_df["交易方向"] = dividend_df["交易方向"].map(_dir_cn).fillna(dividend_df["交易方向"])
+            if "日期" in dividend_df.columns:
+                dividend_df["日期"] = pd.to_datetime(dividend_df["日期"]).dt.strftime("%Y-%m-%d")
             dividend_df.to_excel(writer, sheet_name="红利明细", index=False)
 
     return out_path

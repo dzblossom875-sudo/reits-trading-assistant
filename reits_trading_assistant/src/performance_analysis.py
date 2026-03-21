@@ -447,7 +447,9 @@ def save_daily_tracking(daily_df, holdings_daily=None, nav_df=None):
             tracking[col] = tracking[col].round(4)
 
     out_path = os.path.join(config.OUTPUT_DIR, "daily_tracking.xlsx")
-    tracking.to_excel(out_path, engine='openpyxl')
+    export = tracking.copy()
+    export.index = export.index.strftime("%Y-%m-%d")
+    export.to_excel(out_path, engine='openpyxl')
     return tracking, out_path
 
 

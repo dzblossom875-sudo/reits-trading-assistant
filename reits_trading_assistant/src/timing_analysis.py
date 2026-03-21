@@ -164,6 +164,16 @@ def save_timing_result(result: pd.DataFrame):
             for col in ["net_amount_wan", "ret_5d", "ret_10d", "ret_20d"]:
                 if col in display_df.columns:
                     display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+            display_df = display_df.rename(columns={
+                "date": "日期", "signal": "信号",
+                "net_amount_wan": "净买入(万)",
+                "ret_5d": "后5日收益(%)", "ret_10d": "后10日收益(%)", "ret_20d": "后20日收益(%)",
+            })
+            _signal_cn = {"heavy_buy": "大幅加仓", "heavy_sell": "大幅减仓", "neutral": "中性"}
+            if "信号" in display_df.columns:
+                display_df["信号"] = display_df["信号"].map(_signal_cn).fillna(display_df["信号"])
+            if "日期" in display_df.columns:
+                display_df["日期"] = pd.to_datetime(display_df["日期"]).dt.strftime("%Y-%m-%d")
             display_df.to_excel(writer, sheet_name="择时明细", index=False)
 
         # Sheet 2: 胜率统计
