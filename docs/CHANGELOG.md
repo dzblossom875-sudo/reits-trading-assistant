@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-03-21 20:40 - 分支合并归档
+
+**工具**：Claude Code
+
+### 分支管理
+- `review/fix-data-loader` fast-forward 合并至 `main`（`607e96c`）
+- 本地分支 `review/fix-data-loader` 已删除
+- 远程分支 `origin/review/fix-data-loader` 保留（未推送 main）
+
+---
+
 ## 2026-03-21 20:10 - `6a81ae5`
 
 **工具**：Claude Code
