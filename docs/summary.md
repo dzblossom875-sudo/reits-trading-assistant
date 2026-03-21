@@ -57,6 +57,14 @@
 - Windows 中文路径 glob 需用正斜杠或 `os.path.join()` 避免转义问题
 - f-string 不能包含未转义的大括号，跨行时注意引号匹配
 
+### Streamlit Dashboard（2026-03-22 更新）
+- **双轴归一化锚点**：归一化除数必须从完整数据集找，不能从已裁切的时间窗口找，否则当显示起点晚于基准日时锚点漂移
+- **双轴 Y 轴压缩**：Plotly 双轴图中若主轴（左）不设 range，会与副轴互相压缩；两轴均应手动设 range
+- **柱状图右轴 range**：用 `np.percentile(abs_vals, 95)` 代替 max，避免单个极值把所有普通柱压扁
+- **`st.date_input` 返回 None**：用户清空输入框时返回 None，`pd.to_datetime(None)` 无法与 DatetimeIndex 比较 → 全部日期控件加 `if x else 默认值` 兜底再统一转换
+- **`use_container_width`**：Streamlit 已废弃，统一改为 `width='stretch'`
+- **parquet monthly 单位**：`performance_summary_monthly.parquet` 的 `nav_return`/`idx_return` 已是百分比值（如 4.807 = 4.807%），不可再乘 100
+
 ---
 
 ## 最佳实践

@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-03-22 02:00 - `(本次提交)`
+
+**工具**：Claude Code
+
+### Dashboard 全面重构（bug修复 + 交互升级）
+
+#### Bug 修复
+- **fix**: Sharpe 指标卡 `perf_metrics.loc[mask][0, col]` 无效双重索引 → CRASH，改用 `.index[mask][0]` 先取行名再 `.loc`
+- **fix**: `perf_monthly['nav_return'] * 100` 双重乘100（数据已是%值），图五月度柱状图数值错误（显示480%→4.8%）
+- **fix**: 归一化锚点漂移 — 当 `fig1_start > fig1_base` 时，从裁切后的 `df_p1` 里找锚点会漂移到 fig1_start，导致基准日处净值≠1.0；改为始终从完整 `df` 里找锚点
+- **fix**: `if sd and ed` NaT 检查无效（Timestamp 永远 truthy），改为 `pd.notna(sd) and pd.notna(ed)`
+- **fix**: `date_input` 清空返回 `None` 导致 `pd.to_datetime(None)` 与 DatetimeIndex 比较崩溃，全部日期变量加 `if x else 默认值` 兜底
+
+#### 交互升级
+- **feat**: 侧边栏拆为两个独立区块：「图一：核心趋势」（起始日 + 归一化基准日）与「图二~六：区间分析」（起始日 + 结束日），互不干扰
+- **feat**: 顶部四张指标卡（总收益/年化/最大回撤/夏普）改为动态计算，跟随图一归一化基准日联动，delta 行显示同期指数对应值
+
+#### 图表优化
+- **fix**: 图二图三双轴长周期压缩 — 左轴（指数）手动设置 range（与图一逻辑统一），右轴改用第 95 分位数定高度避免单点大值将其余柱压扁
+- **feat**: 图一左轴默认 range 模拟 Autoscale 按钮效果（手动计算 min/max + 5% padding）
+- **feat**: 全部图表图例统一移至底部居中（`y=-0.12, x=0.5`），图四/六单 trace 图设 `showlegend=False`
+- **fix**: `use_container_width=True` → `width='stretch'`，消除 Streamlit 弃用警告刷屏
+
+#### 关联文件
+- `reits_trading_assistant/dashboard.py`
+
+---
+
 ## 2026-03-22 00:00 - `36954b5`
 
 **工具**：Claude Code
