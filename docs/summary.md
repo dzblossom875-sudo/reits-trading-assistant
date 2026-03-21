@@ -78,27 +78,83 @@
 
 ---
 
+## 图表规范（2026-03-21 更新）
+
+### X 轴日期
+- 统一使用 `_apply_date_format(ax)` helper（`AutoDateLocator + ConciseDateFormatter`）
+- 自动选择间隔粒度，标注到日
+
+### 净值/指数对齐
+- 找两线共同第一个有效日期，在该日统一归一化到1.0
+- 不依赖各自起始日独立归一化
+
+### 仓位图
+- 使用 `fill_between` 面积图
+- 单日变动>10ppt 标注 `异常XX%`（不用 Unicode 符号，SimHei 不支持）
+
+### 板块表现图
+- 有行情数据：散点气泡图（X=区间涨跌幅, Y=净买入万, 气泡=交易量, 四象限中文标注）
+- 无行情数据：左右并排水平柱状图
+
+---
+
+## 输出文件清单（2026-03-21 更新）
+
+| 文件 | 内容 | 行数 |
+|------|------|------|
+| `daily_master.xlsx` | 历史+计算完整主表（2022-11-24起） | 831行 |
+| `full_series.csv` | 同上，CSV格式 | 831行 |
+| `validation_history_vs_calc.xlsx` | 2026+历史vs计算对比 | 48行 |
+| `performance_summary.xlsx` | 业绩指标+分月收益 | — |
+| `daily_tracking.xlsx` | 日频净值+仓位（BASE_DATE起） | 80行 |
+| `trade_summary.xlsx` | 逐日交易汇总 | — |
+| `allocation_bias.xlsx` | 配置偏移（个券+板块） | — |
+| `timing_analysis.xlsx` | 择时事件分析 | — |
+
+### daily_master.xlsx 列结构
+```
+日期 | 资产净值(万) | 指数绝对值 | 指数(基准2022-11-24) | 净值(基准2022-11-24)
+   | 超额 | 仓位 | 仓位变动 | 买入(万) | 卖出(万) | 红利(万) | 净买入(万)
+   | 交易笔数 | 信号
+```
+- 历史段（2022-11-24~2025-12-31）：交易列为 NaN
+- 计算段（2026-01-05起）：全列有值
+
+---
+
+## Wind 行情缓存
+
+- 缓存路径：`data/processed/wind_prices_cache.csv`
+- 增量更新：每次只拉取缓存 max_date 后的新增日期
+- 强制全量刷新：删除缓存文件后重新运行
+
+---
+
 ## 已知限制
 
-1. **持仓权重 97.15% ≠ 100%**：原始数据存在现金/其他资产，未完全满仓
-2. **Wind API 依赖**：个股行情优先从 Wind 获取，失败时回退本地文件
-3. **交易日历**：未剔除节假日，波动率计算按连续日历日
+1. **持仓权重 97.14% ≠ 100%**：原始数据存在现金/其他资产，未完全满仓
+2. **Wind API 依赖**：个股行情优先从 Wind 获取，失败时回退缓存或本地文件
+3. **仓位计算失真风险**：持仓文件非每日更新时，`ffill()` 导致仓位显示为阶梯形
+4. **交易日历**：波动率按连续交易日计算（×√252），未剔除节假日
 
 ---
 
 ## 常用命令
 
 ```bash
-# 运行主程序
-python main.py
+# 运行主程序（需加编码变量，避免 GBK 崩溃）
+PYTHONIOENCODING=utf-8 D:/install/python.exe main.py
 
-# 查看最新输出
+# 查看最新输出目录
 ls output/$(ls -t output | head -1)/
 
 # 检查交易方向分布
 python -c "import pandas as pd; df = pd.read_csv('data/processed/trades_clean.csv'); print(df['direction'].value_counts())"
+
+# 强制刷新 Wind 行情缓存
+rm data/processed/wind_prices_cache.csv
 ```
 
 ---
 
-*最后更新：2026-03-20*
+*最后更新：2026-03-21 18:40*

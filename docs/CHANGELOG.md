@@ -4,7 +4,92 @@
 
 ---
 
-## 2026-03-21 - 文档归档（MEMORY）
+## 2026-03-21 18:23 - `0f82088`
+
+**工具**：Claude Code
+
+### 新增功能
+- **feat(data_loader)**: 新增 `save_merged_daily()` — 将 `full_series`（历史+计算）与 `daily_trades`（交易汇总）合并为 `daily_master.xlsx`
+- **feat(data_loader)**: `build_full_series()` 扩展新增列：`reits_index_abs`（指数绝对值）、`position_change`（仓位变动，接历史末尾锚点差分）
+- **output**: `daily_master.xlsx`，831天，13列，结构与 `history data.xlsx` 同构
+
+### 关联文件
+- `reits_trading_assistant/src/data_loader.py`
+- `reits_trading_assistant/main.py`
+
+---
+
+## 2026-03-21 18:12 - `3991d37`
+
+**工具**：Claude Code
+
+### 修复问题
+- **fix(data_loader)**: `load_history_data()` 兼容新增列结构
+  - 原硬编码7列列名赋值，文件扩展到14列后报 `ValueError: Length mismatch`
+  - 改为位置字典映射 + `if k < len(df.columns)` 边界保护，自动适配任意列数
+
+### 关联文件
+- `reits_trading_assistant/src/data_loader.py`
+
+---
+
+## 2026-03-21 18:09 - `df68c7b`
+
+**工具**：Claude Code
+
+### 新增功能
+- **feat(data_loader)**: 新增 `load_history_data()` — 读取 `history data.xlsx`（802条，2022-11-24起），位置映射14列，处理列名含换行符问题
+- **feat(data_loader)**: 新增 `build_full_series()` — BASE_DATE对齐，历史段直接使用，计算段 rescale，输出 `full_series.csv`（831天）
+- **feat(data_loader)**: 新增 `validate_history_vs_calc()` — 2026+共48天对比验证，净值/指数/净资产差异全为0
+- **feat(performance_analysis)**: `save_daily_tracking()` 新增 `净资产(万)` / `持仓市值(万)` 列，百分比保留两位小数
+- **feat**: 所有金额输出统一万元单位
+
+### 关联文件
+- `reits_trading_assistant/src/data_loader.py`
+- `reits_trading_assistant/src/performance_analysis.py`
+- `reits_trading_assistant/config.py`（新增 `FILE_HISTORY_DATA`、`SHEET_HISTORY_DATA`）
+- `reits_trading_assistant/main.py`
+
+---
+
+## 2026-03-21 17:57 - `bad6117`
+
+**工具**：Claude Code
+
+### 新增功能
+- **feat(wind_data_loader)**: Wind 行情增量缓存
+  - 缓存路径：`data/processed/wind_prices_cache.csv`
+  - 每次运行读缓存 → 找 max_date → 只拉 `(max_date+1)~today` → 合并去重保存
+  - 无缓存时全量拉取（起始 2024-01-01）；Wind 失败时回退现有缓存
+
+### 关联文件
+- `reits_trading_assistant/src/wind_data_loader.py`
+
+---
+
+## 2026-03-21 15:24 - `aabb4b7`
+
+**工具**：Claude Code
+
+### 新增功能与修复
+- **feat(performance)**: `plot_nav_vs_index()` 找共同起始日统一归一化到1.0，解决起点错位
+- **feat**: 所有图表 X 轴改用 `AutoDateLocator + ConciseDateFormatter`，标注精确到日，封装为 `_apply_date_format(ax)`
+- **feat(trade)**: `plot_position_vs_index()` 仓位改 `fill_between` 面积图；打印每日计算过程；单日变动>10ppt 标注 `异常XX%`；`input()` 询问是否排除（EOFError 默认保留）
+- **feat(sector)**: `plot_sector_performance()` 有行情时改散点气泡图（X=涨跌幅,Y=净买入,气泡=交易量,四象限中文标注【买对了】等）；无行情时改左右并排水平柱状图
+
+### 修复 Bug
+- **fix**: SimHei 字体不含 Unicode 符号（✓ ✗ ⚠️），改用纯中文【】包裹，消除方块乱码
+- **fix**: `input()` 在管道/重定向下抛 `EOFError`，改用 try/except 默认保留
+- **fix**: Windows GBK 终端运行需加 `PYTHONIOENCODING=utf-8`
+
+### 关联文件
+- `reits_trading_assistant/src/performance_analysis.py`
+- `reits_trading_assistant/src/trade_analysis.py`
+- `reits_trading_assistant/src/sector_analysis.py`
+
+---
+
+## 2026-03-21 11:38 - 文档归档（MEMORY）
 
 **工具**: Cursor
 
