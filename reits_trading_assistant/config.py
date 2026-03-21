@@ -17,7 +17,7 @@ OUTPUT_REPORTS_DIR = os.path.join(OUTPUT_DIR, "reports")
 FILE_REITS_INFO = "沪深REITs.xlsx"
 FILE_INDEX = "指数.xlsx"  # 中证 REITs 全收益指数
 FILE_WEIGHT_932006 = "932006closeweight.xlsx"  # 932006收盘价指数权重
-FILE_HOLDINGS = "统计分析-持仓查询-组合持仓查询.xlsx"  # 持仓查询文件
+FILE_HOLDINGS = "统计分析-持仓查询-组合持仓查询*.xlsx"  # 持仓查询文件（支持通配符，取最新）
 FILE_LOCAL_PRICES = "行情数据251231至今.xlsx"         # 本地个股行情（Wind回退）
 
 # 日报表配置：自动读取input目录下最新日期的日报表

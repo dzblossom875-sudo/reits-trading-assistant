@@ -210,10 +210,11 @@ def load_holdings():
     3. 检查负数持仓（报错）
     4. 验证权重合计
     """
-    filepath = os.path.join(config.DATA_RAW_DIR, config.FILE_HOLDINGS)
-    if not os.path.exists(filepath):
-        print(f"⚠️ 持仓文件不存在：{filepath}")
+    files = glob.glob(os.path.join(config.DATA_RAW_DIR, config.FILE_HOLDINGS))
+    if not files:
+        print(f"⚠️ 持仓文件不存在：{config.FILE_HOLDINGS}")
         return None
+    filepath = max(files, key=os.path.getmtime)
     print(f"📖 读取持仓查询：{os.path.basename(filepath)}")
     
     # 读取 Excel（无表头）
@@ -301,9 +302,10 @@ def load_holdings_timeseries():
     读取持仓查询文件全部日期，返回日频持仓市值汇总
     用于仓位计算
     """
-    filepath = os.path.join(config.DATA_RAW_DIR, config.FILE_HOLDINGS)
-    if not os.path.exists(filepath):
+    files = glob.glob(os.path.join(config.DATA_RAW_DIR, config.FILE_HOLDINGS))
+    if not files:
         return None
+    filepath = max(files, key=os.path.getmtime)
     df = pd.read_excel(filepath, sheet_name=config.SHEET_HOLDINGS, header=None, dtype=str)
     col_map = {0: "date", 11: "code", 43: "market_value"}
     df = df.rename(columns=col_map)
@@ -318,6 +320,9 @@ def load_holdings_timeseries():
     # 按日汇总持仓市值
     daily_mv = df.groupby("date")["market_value"].sum().reset_index()
     daily_mv = daily_mv.sort_values("date").set_index("date")
+    # 部分导出在缺行时日内合计为 0；0 视为缺失，沿用上一有效持仓总市值（真清仓需源文件显式非零后归零）
+    mv = daily_mv["market_value"].replace(0, np.nan).ffill()
+    daily_mv["market_value"] = mv.fillna(0)
     return daily_mv
 
 
