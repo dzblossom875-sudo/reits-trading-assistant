@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-03-21 19:10 - `d4520fd`
+
+**工具**：Claude Code
+
+### 格式统一
+- **feat(trade_analysis)**: `trade_summary.xlsx` 日度汇总列名全部翻译：`date→日期`、`buy_amount→买入(万)`、`sell_amount→卖出(万)`、`dividend_amount→红利(万)`、`net_amount→净买入(万)`、`trade_count→交易笔数`、`signal→信号`；signal 值汉化：`heavy_buy→大幅加仓`、`heavy_sell→大幅减仓`、`neutral→中性`；红利明细 sheet 列名翻译
+- **feat(allocation_analysis)**: `allocation_bias.xlsx` 个券/板块 sheet 列名翻译：`code→证券代码`、`name→证券名称`、`sector→板块`、`account_weight→账户权重`、`index_weight→指数权重`、`weight_bias→偏移`
+- **feat(timing_analysis)**: `timing_analysis.xlsx` 择时明细列名翻译：`date→日期`、`signal→信号`、`net_amount_wan→净买入(万)`、`ret_5d→后5日收益(%)`等；信号值同步汉化
+- **feat(performance_analysis)**: `daily_tracking.xlsx` 日期索引由 Timestamp 改为 `YYYY-MM-DD` 字符串（使用 copy 写出，不影响返回值的 DatetimeIndex）
+- **feat(data_loader)**: `daily_master.xlsx` 日期索引同上
+
+### 关联文件
+- `reits_trading_assistant/src/trade_analysis.py`
+- `reits_trading_assistant/src/allocation_analysis.py`
+- `reits_trading_assistant/src/timing_analysis.py`
+- `reits_trading_assistant/src/performance_analysis.py`
+- `reits_trading_assistant/src/data_loader.py`
+
+---
+
 ## 2026-03-21 18:23 - `0f82088`
 
 **工具**：Claude Code
