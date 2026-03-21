@@ -216,4 +216,21 @@
 
 ---
 
-*最后更新：2026-03-21 18:30*
+---
+
+## history data.xlsx 中 reits_index_abs 列全为 NaN
+
+- **时间**：2026-03-21 19:45
+- **现象**：`full_series.csv` 和 `tracking_and_history.xlsx` 的历史段指数绝对值全为空
+- **根因**：`history data.xlsx` 的 `reits_index_abs` 列本身未填写数据（原始文件该列为空）
+- **解决方案**：在 `build_full_series()` 中，对历史段用 `daily_df["reits_index"]` 的值回填
+  ```python
+  if "reits_index" in daily.columns:
+      hist_pre["reits_index_abs"] = daily["reits_index"].reindex(hist_pre.index).round(4)
+  ```
+  `daily_df` 从 `指数.xlsx` 加载，覆盖 2021-10-08 至今，足够覆盖全部历史段（2022-11-24起）
+- **关联 Commit**：`7fcc34d`（2026-03-21 19:45）
+
+---
+
+*最后更新：2026-03-21 19:50*

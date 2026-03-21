@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-03-21 19:45 - `7fcc34d`
+
+**工具**：Claude Code
+
+### 修复与新增
+- **fix(data_loader)**: `build_full_series()` 历史段 `reits_index_abs` 从 `daily_df["reits_index"]` 回填（原 history data.xlsx 该列为空）
+- **fix(data_loader)**: `build_full_series()` 仓位数据切换：≤2026-03-06 用 history_df，之后用测算数据（持仓市值/净资产）；仓位变动以历史末日为锚点重新差分
+- **feat(data_loader)**: 新增 `save_combined_excel()`，输出 `tracking_and_history.xlsx`（两 sheet：逐日跟踪2026起 + 全历史2022起，列结构统一为7列中文）
+
+### 关联文件
+- `reits_trading_assistant/src/data_loader.py`
+- `reits_trading_assistant/main.py`
+
+---
+
 ## 2026-03-21 19:10 - `d4520fd`
 
 **工具**：Claude Code
