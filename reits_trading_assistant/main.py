@@ -11,7 +11,9 @@ sys.path.insert(0, BASE_DIR)
 
 import config  # noqa: 触发目录创建
 
-from src.data_loader import align_and_save, load_holdings_timeseries
+from src.data_loader import (align_and_save, load_holdings_timeseries,
+                             load_history_data, build_full_series,
+                             validate_history_vs_calc)
 from src.sector_analysis import analyze_sector_trades, plot_sector_performance, plot_sector_rotation_dual, calc_sector_returns
 from src.trade_analysis import plot_trade_flow, plot_net_buy_vs_index, plot_sector_rotation, save_trade_summary, plot_position_vs_index, summarize_trades
 from src.timing_analysis import analyze_timing, plot_timing_chart, save_timing_result
@@ -51,6 +53,48 @@ def main():
         print(f"  持仓时序: {len(holdings_daily)} 天")
     if weight_df is not None:
         print(f"  指数权重: {len(weight_df)} 条, 总权重={weight_df['weight'].sum():.2%}")
+
+    # Step 1b: 历史数据加载、对齐、2026+差异验证
+    print("\n[1b/7] 历史数据加载与对齐...")
+    history_df = load_history_data()
+    full_df, scale_factors = (None, {})
+    validation_df = pd.DataFrame()
+    if history_df is not None:
+        full_df, scale_factors = build_full_series(
+            daily_df, history_df,
+            base_date=pd.to_datetime(config.BASE_DATE),
+            holdings_daily=holdings_daily,
+        )
+        if full_df is not None:
+            # 保存完整时序
+            full_path = os.path.join(config.OUTPUT_DIR, "full_series.csv")
+            full_df.to_csv(full_path, encoding="utf-8-sig")
+            print(f"  已保存: full_series.csv（{len(full_df)} 天，"
+                  f"{full_df.index.min().date()} ~ {full_df.index.max().date()}）")
+
+        # 2026+ 差异验证
+        validation_df = validate_history_vs_calc(
+            history_df, daily_df, scale_factors,
+            base_date=pd.to_datetime(config.BASE_DATE),
+        )
+        if not validation_df.empty:
+            val_path = os.path.join(config.OUTPUT_DIR, "validation_history_vs_calc.xlsx")
+            with pd.ExcelWriter(val_path, engine="openpyxl") as writer:
+                validation_df.to_excel(writer, sheet_name="待核查")
+                # 补一张摘要
+                summary_rows = []
+                for col in ["净值差异%", "指数差异%", "净资产差异(万)"]:
+                    if col in validation_df.columns:
+                        s = validation_df[col].dropna()
+                        summary_rows.append({
+                            "指标": col,
+                            "均值": round(s.mean(), 4),
+                            "最大绝对值": round(s.abs().max(), 4),
+                            "差异>1的天数": int((s.abs() > 1).sum()),
+                            "总天数": len(s),
+                        })
+                pd.DataFrame(summary_rows).to_excel(writer, sheet_name="摘要", index=False)
+            print(f"  已保存: validation_history_vs_calc.xlsx（{len(validation_df)} 天对比）")
 
     # Step 2: 尝试从Wind获取行情数据
     print("\n[2/7] 获取行情数据...")

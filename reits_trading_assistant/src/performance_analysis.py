@@ -432,8 +432,19 @@ def save_daily_tracking(daily_df, holdings_daily=None, nav_df=None):
         pos["net_assets"] = na["net_assets"].reindex(pos.index).ffill()
         pos["position_pct"] = pos["market_value"] / pos["net_assets"] * 100
 
-        tracking["仓位(%)"] = pos["position_pct"]
-        tracking["仓位变动(%)"] = tracking["仓位(%)"].diff()
+        tracking["净资产(万)"] = (pos["net_assets"] / 1e4).round(2)
+        tracking["持仓市值(万)"] = (pos["market_value"] / 1e4).round(2)
+        tracking["仓位(%)"] = pos["position_pct"].round(2)
+        tracking["仓位变动(%)"] = tracking["仓位(%)"].diff().round(2)
+
+    # 统一两位小数（百分比列）
+    for col in ["超额(%)", "仓位(%)", "仓位变动(%)"]:
+        if col in tracking.columns:
+            tracking[col] = tracking[col].round(2)
+    # 归一化列保留4位小数
+    for col in ["账户净值(归一)", "指数净值(归一)"]:
+        if col in tracking.columns:
+            tracking[col] = tracking[col].round(4)
 
     out_path = os.path.join(config.OUTPUT_DIR, "daily_tracking.xlsx")
     tracking.to_excel(out_path, engine='openpyxl')

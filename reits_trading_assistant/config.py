@@ -19,6 +19,8 @@ FILE_INDEX = "指数.xlsx"  # 中证 REITs 全收益指数
 FILE_WEIGHT_932006 = "932006closeweight.xlsx"  # 932006收盘价指数权重
 FILE_HOLDINGS = "统计分析-持仓查询-组合持仓查询*.xlsx"  # 持仓查询文件（支持通配符，取最新）
 FILE_LOCAL_PRICES = "行情数据251231至今.xlsx"         # 本地个股行情（Wind回退）
+FILE_HISTORY_DATA = "history data.xlsx"             # 历史数据（2022-11-24起，含净值/指数/仓位）
+SHEET_HISTORY_DATA = "historical data"
 
 # 日报表配置：自动读取input目录下最新日期的日报表
 DAILY_REPORT_PATTERN = "日报表_*.xlsx"

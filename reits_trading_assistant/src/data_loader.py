@@ -351,6 +351,198 @@ def load_index_weight_932006():
     return df_clean
 
 
+# ============== 历史数据加载与对齐 ==============
+
+def load_history_data() -> pd.DataFrame:
+    """
+    读取 history data.xlsx（historical data sheet）
+    列: date, net_assets(元), reits_index_norm, nav_norm, excess, position_pct, position_change
+    返回 DataFrame，index=date
+    """
+    filepath = os.path.join(config.DATA_RAW_DIR, config.FILE_HISTORY_DATA)
+    if not os.path.exists(filepath):
+        print(f"⚠️ 历史数据文件不存在：{config.FILE_HISTORY_DATA}")
+        return None
+    print(f"📖 读取历史数据：{config.FILE_HISTORY_DATA}")
+    df = pd.read_excel(filepath, sheet_name=config.SHEET_HISTORY_DATA, header=0)
+    df.columns = ["date", "net_assets", "reits_index_norm", "nav_norm",
+                  "excess", "position_pct", "position_change"]
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df[df["date"].notna()].sort_values("date")
+    for col in ["net_assets", "reits_index_norm", "nav_norm",
+                "excess", "position_pct", "position_change"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.set_index("date")
+    print(f"  ✅ 读取完成：{len(df)} 条，"
+          f"{df.index.min().date()} ~ {df.index.max().date()}")
+    return df
+
+
+def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
+                      base_date=None, holdings_daily=None) -> tuple:
+    """
+    以 base_date（默认 config.BASE_DATE = 2025-12-31）为对齐点，合并历史与计算数据：
+    - base_date 及之前：使用 history_df（2022-11-24 基准）
+    - base_date 之后：使用 daily_df rescaled 到历史基准
+
+    返回:
+        full_df  : index=date，列 nav_norm_full / reits_index_norm_full /
+                   excess_full / net_assets_wan(万元) / position_pct
+        scale_factors : dict, 对齐系数 {nav_scale, idx_scale}
+    """
+    if base_date is None:
+        base_date = pd.to_datetime(config.BASE_DATE)
+    else:
+        base_date = pd.to_datetime(base_date)
+
+    daily = daily_df.copy()
+    daily.index = pd.to_datetime(daily.index)
+
+    # ── 取历史在 base_date 的缩放系数 ──
+    hist_pre = history_df[history_df.index <= base_date]
+    if hist_pre.empty:
+        print("⚠️ 历史数据中 base_date 之前无数据，无法对齐")
+        return None, {}
+    ref = hist_pre.iloc[-1]
+    nav_scale = float(ref["nav_norm"])        # e.g. 1.002887
+    idx_scale = float(ref["reits_index_norm"])  # e.g. 0.915371
+    print(f"  对齐系数（{ref.name.date()}）: nav_scale={nav_scale:.6f}, "
+          f"idx_scale={idx_scale:.6f}")
+
+    # ── 计算数据 rescale ──
+    calc_post = daily[daily.index > base_date].copy()
+    if "nav_norm" in calc_post.columns:
+        calc_post["nav_norm_full"] = (calc_post["nav_norm"] * nav_scale).round(6)
+    if "reits_index_norm" in calc_post.columns:
+        calc_post["reits_index_norm_full"] = (calc_post["reits_index_norm"] * idx_scale).round(6)
+
+    # net_assets → 万元
+    if "net_assets" in calc_post.columns:
+        calc_post["net_assets_wan"] = (calc_post["net_assets"] / 1e4).round(2)
+
+    # position_pct from holdings_daily（补充计算侧仓位）
+    if holdings_daily is not None and "net_assets" in calc_post.columns:
+        hd = holdings_daily.copy()
+        hd.index = pd.to_datetime(hd.index)
+        calc_post["position_pct"] = (
+            hd["market_value"].reindex(calc_post.index).ffill()
+            / calc_post["net_assets"]
+        ).round(4)
+
+    calc_cols = [c for c in ["nav_norm_full", "reits_index_norm_full",
+                              "net_assets_wan", "position_pct"]
+                 if c in calc_post.columns]
+
+    # ── 历史侧整理 ──
+    hist_full = history_df[history_df.index <= base_date].copy()
+    hist_full = hist_full.rename(columns={
+        "nav_norm": "nav_norm_full",
+        "reits_index_norm": "reits_index_norm_full",
+    })
+    hist_full["net_assets_wan"] = (hist_full["net_assets"] / 1e4).round(2)
+    hist_cols = ["nav_norm_full", "reits_index_norm_full",
+                 "net_assets_wan", "position_pct"]
+
+    full_df = pd.concat([
+        hist_full[[c for c in hist_cols if c in hist_full.columns]],
+        calc_post[[c for c in calc_cols if c in calc_post.columns]],
+    ]).sort_index()
+
+    full_df["excess_full"] = (
+        full_df["nav_norm_full"] - full_df["reits_index_norm_full"]
+    ).round(6)
+
+    return full_df, {"nav_scale": nav_scale, "idx_scale": idx_scale}
+
+
+def validate_history_vs_calc(history_df: pd.DataFrame, daily_df: pd.DataFrame,
+                              scale_factors: dict, base_date=None) -> pd.DataFrame:
+    """
+    对比 base_date 之后、history_df 与 daily_df（rescaled）共同有数据的日期。
+    返回 DataFrame，每行一个交易日，列含差异值与差异百分比。
+    仅包含 nav_norm、reits_index_norm、net_assets 三项。
+    """
+    if base_date is None:
+        base_date = pd.to_datetime(config.BASE_DATE)
+    else:
+        base_date = pd.to_datetime(base_date)
+
+    nav_scale = scale_factors.get("nav_scale", 1.0)
+    idx_scale = scale_factors.get("idx_scale", 1.0)
+
+    hist_2026 = history_df[history_df.index > base_date].copy()
+    if hist_2026.empty:
+        print("  历史文件中 base_date 之后无数据，跳过对比")
+        return pd.DataFrame()
+
+    daily = daily_df.copy()
+    daily.index = pd.to_datetime(daily.index)
+    calc_2026 = daily[daily.index > base_date].copy()
+
+    common_dates = hist_2026.index.intersection(calc_2026.index)
+    if common_dates.empty:
+        print("  无共同日期，跳过对比")
+        return pd.DataFrame()
+
+    rows = []
+    for d in common_dates:
+        h = hist_2026.loc[d]
+        c = calc_2026.loc[d]
+
+        calc_nav  = float(c["nav_norm"])  * nav_scale if "nav_norm"  in c.index else np.nan
+        calc_idx  = float(c["reits_index_norm"]) * idx_scale if "reits_index_norm" in c.index else np.nan
+        calc_na   = float(c["net_assets"]) / 1e4 if "net_assets" in c.index else np.nan
+
+        hist_nav  = float(h["nav_norm"])
+        hist_idx  = float(h["reits_index_norm"])
+        hist_na   = float(h["net_assets"]) / 1e4
+
+        nav_diff  = round(calc_nav - hist_nav, 6) if not np.isnan(calc_nav)  else np.nan
+        idx_diff  = round(calc_idx - hist_idx, 6) if not np.isnan(calc_idx)  else np.nan
+        na_diff   = round(calc_na  - hist_na,  2)  if not np.isnan(calc_na)  else np.nan
+
+        rows.append({
+            "日期":          d.strftime("%Y-%m-%d"),
+            "历史_单位净值":   round(hist_nav, 6),
+            "计算_单位净值":   round(calc_nav, 6) if not np.isnan(calc_nav) else np.nan,
+            "净值差异":       nav_diff,
+            "净值差异%":      round(nav_diff / hist_nav * 100, 4) if not np.isnan(nav_diff) else np.nan,
+            "历史_指数":      round(hist_idx, 6),
+            "计算_指数":      round(calc_idx, 6) if not np.isnan(calc_idx) else np.nan,
+            "指数差异":       idx_diff,
+            "指数差异%":      round(idx_diff / hist_idx * 100, 4) if not np.isnan(idx_diff) else np.nan,
+            "历史_净资产(万)": round(hist_na, 2),
+            "计算_净资产(万)": round(calc_na,  2) if not np.isnan(calc_na)  else np.nan,
+            "净资产差异(万)":  na_diff,
+        })
+
+    val_df = pd.DataFrame(rows).set_index("日期")
+
+    # ── 打印摘要 ──
+    print(f"\n{'='*60}")
+    print(f"📋 2026+ 历史 vs 计算数据对比（共 {len(val_df)} 个交易日）")
+    print(f"{'='*60}")
+    for col, label in [("净值差异%", "单位净值"), ("指数差异%", "指数"), ("净资产差异(万)", "净资产(万)")]:
+        if col in val_df.columns:
+            s = val_df[col].dropna()
+            if not s.empty:
+                print(f"  {label}: 最大差异={s.abs().max():.4f}  "
+                      f"均值差异={s.mean():.4f}  "
+                      f"|差异|>1的天数={( s.abs() > 1 ).sum()}")
+
+    large_nav = val_df[val_df["净值差异%"].abs() > 0.5] if "净值差异%" in val_df.columns else pd.DataFrame()
+    large_na  = val_df[val_df["净资产差异(万)"].abs() > 100] if "净资产差异(万)" in val_df.columns else pd.DataFrame()
+    if not large_nav.empty:
+        print(f"\n  ⚠️  单位净值差异 >0.5% 的日期（{len(large_nav)}天）：")
+        print(large_nav[["历史_单位净值","计算_单位净值","净值差异%"]].to_string())
+    if not large_na.empty:
+        print(f"\n  ⚠️  净资产差异 >100万 的日期（{len(large_na)}天）：")
+        print(large_na[["历史_净资产(万)","计算_净资产(万)","净资产差异(万)"]].to_string())
+    print(f"{'='*60}\n")
+
+    return val_df
+
+
 # ============== 主数据对齐函数 ==============
 
 def align_and_save():
