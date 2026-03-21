@@ -187,21 +187,79 @@ def _load_local_prices(codes: list) -> pd.DataFrame:
     return df_data[available].sort_index() if available else None
 
 
+_PRICES_CACHE_PATH = os.path.join(config.DATA_PROCESSED_DIR, "wind_prices_cache.csv")
+
+
+def _load_prices_cache() -> pd.DataFrame:
+    """读取本地行情缓存，返回 DataFrame(index=date, columns=codes)，无缓存则返回 None"""
+    if not os.path.exists(_PRICES_CACHE_PATH):
+        return None
+    try:
+        df = pd.read_csv(_PRICES_CACHE_PATH, index_col=0, parse_dates=True, encoding="utf-8-sig")
+        df.index = pd.to_datetime(df.index)
+        return df.sort_index()
+    except Exception as e:
+        print(f"  读取行情缓存失败: {e}")
+        return None
+
+
+def _save_prices_cache(df: pd.DataFrame):
+    """保存行情数据到本地缓存"""
+    try:
+        df.sort_index().to_csv(_PRICES_CACHE_PATH, encoding="utf-8-sig")
+    except Exception as e:
+        print(f"  保存行情缓存失败: {e}")
+
+
 def load_reits_prices_with_fallback(codes: list) -> pd.DataFrame:
     """
-    加载REITs个股价格，优先从Wind获取，数据异常时回退本地文件
-    判断标准：Wind返回数据的非空率 < 50% 视为异常
+    加载REITs个股价格，优先从Wind获取，数据异常时回退本地文件。
+    增量缓存：已拉取的历史数据保存在 wind_prices_cache.csv，
+    下次运行只拉取缓存最新日期之后的新增数据，减少API消耗。
     """
+    today = datetime.now().strftime("%Y-%m-%d")
+    cache = _load_prices_cache()
+
     if config.USE_WIND_API:
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = "2024-01-01"
-        df = get_reits_price_from_wind(codes, start_date, end_date)
-        if df is not None and not df.empty:
-            nan_rate = df.isna().values.mean()
-            if nan_rate < 0.5:
-                return df
-            print(f"  Wind数据异常（NaN率={nan_rate:.0%}），回退本地文件")
+        # 确定需要拉取的起始日期
+        if cache is not None and not cache.empty:
+            cached_max = cache.index.max()
+            fetch_start = (cached_max + timedelta(days=1)).strftime("%Y-%m-%d")
+            if fetch_start > today:
+                print(f"  行情缓存已是最新（{cached_max.date()}），跳过Wind请求")
+                return cache
+            print(f"  行情缓存最新至 {cached_max.date()}，增量拉取 {fetch_start} ~ {today}")
         else:
-            print("  Wind获取失败，回退本地文件")
+            fetch_start = "2024-01-01"
+            print(f"  无行情缓存，全量拉取 {fetch_start} ~ {today}")
+
+        new_df = get_reits_price_from_wind(codes, fetch_start, today)
+
+        if new_df is not None and not new_df.empty:
+            nan_rate = new_df.isna().values.mean()
+            if nan_rate >= 0.5:
+                print(f"  Wind增量数据异常（NaN率={nan_rate:.0%}），回退本地文件")
+            else:
+                # 合并缓存与新数据
+                if cache is not None and not cache.empty:
+                    # 新代码补全历史列（填NaN），旧代码追加新行
+                    combined = pd.concat([cache, new_df])
+                    # 去重（保留最新值）
+                    combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+                else:
+                    combined = new_df.sort_index()
+
+                _save_prices_cache(combined)
+                print(f"  行情缓存已更新：共 {len(combined)} 天 × {len(combined.columns)} 只")
+                return combined
+        else:
+            print("  Wind增量拉取失败，使用现有缓存")
+            if cache is not None:
+                return cache
+
+    # 最终回退：本地缓存 → 本地Excel文件
+    if cache is not None and not cache.empty:
+        print("  使用现有行情缓存（Wind未启用或获取失败）")
+        return cache
     print("  读取本地行情文件...")
     return _load_local_prices(codes)
