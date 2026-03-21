@@ -13,7 +13,7 @@ import config  # noqa: 触发目录创建
 
 from src.data_loader import (align_and_save, load_holdings_timeseries,
                              load_history_data, build_full_series,
-                             validate_history_vs_calc)
+                             validate_history_vs_calc, save_merged_daily)
 from src.sector_analysis import analyze_sector_trades, plot_sector_performance, plot_sector_rotation_dual, calc_sector_returns
 from src.trade_analysis import plot_trade_flow, plot_net_buy_vs_index, plot_sector_rotation, save_trade_summary, plot_position_vs_index, summarize_trades
 from src.timing_analysis import analyze_timing, plot_timing_chart, save_timing_result
@@ -155,6 +155,10 @@ def main():
 
     plot_net_buy_vs_index(trades_df, daily_df) if trades_df is not None else None
     print("  已生成: net_buy_vs_index.png")
+
+    # 合并逐日主表（full_series + trade_summary → daily_master.xlsx）
+    if full_df is not None:
+        save_merged_daily(full_df, daily_trades, config.OUTPUT_DIR)
 
     # 仓位变动图
     pos_path = plot_position_vs_index(daily_trades, daily_df) if daily_trades is not None else None

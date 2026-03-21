@@ -408,9 +408,11 @@ def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
     - base_date 之后：使用 daily_df rescaled 到历史基准
 
     返回:
-        full_df  : index=date，列 nav_norm_full / reits_index_norm_full /
-                   excess_full / net_assets_wan(万元) / position_pct
-        scale_factors : dict, 对齐系数 {nav_scale, idx_scale}
+        full_df  : index=date，列包含以下所有（与 history data.xlsx 同构）：
+                   net_assets_wan, reits_index_abs,
+                   reits_index_norm_full, nav_norm_full, excess_full,
+                   position_pct, position_change
+        scale_factors : dict {nav_scale, idx_scale}
     """
     if base_date is None:
         base_date = pd.to_datetime(config.BASE_DATE)
@@ -421,28 +423,45 @@ def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
     daily.index = pd.to_datetime(daily.index)
 
     # ── 取历史在 base_date 的缩放系数 ──
-    hist_pre = history_df[history_df.index <= base_date]
-    if hist_pre.empty:
+    hist_pre_all = history_df[history_df.index <= base_date]
+    if hist_pre_all.empty:
         print("⚠️ 历史数据中 base_date 之前无数据，无法对齐")
         return None, {}
-    ref = hist_pre.iloc[-1]
-    nav_scale = float(ref["nav_norm"])        # e.g. 1.002887
-    idx_scale = float(ref["reits_index_norm"])  # e.g. 0.915371
+    ref = hist_pre_all.iloc[-1]
+    nav_scale = float(ref["nav_norm"])
+    idx_scale = float(ref["reits_index_norm"])
     print(f"  对齐系数（{ref.name.date()}）: nav_scale={nav_scale:.6f}, "
           f"idx_scale={idx_scale:.6f}")
 
-    # ── 计算数据 rescale ──
+    # ── 历史侧整理（pre base_date） ──
+    hist_pre = hist_pre_all.copy()
+    hist_pre = hist_pre.rename(columns={
+        "nav_norm": "nav_norm_full",
+        "reits_index_norm": "reits_index_norm_full",
+    })
+    hist_pre["net_assets_wan"] = (hist_pre["net_assets"] / 1e4).round(2)
+    # position_change 在历史中单位为小数差分，转换为百分比差分
+    if "position_change" in hist_pre.columns:
+        hist_pre["position_change"] = hist_pre["position_change"].round(4)
+
+    hist_keep = [c for c in ["net_assets_wan", "reits_index_abs",
+                              "reits_index_norm_full", "nav_norm_full",
+                              "position_pct", "position_change"]
+                 if c in hist_pre.columns]
+
+    # ── 计算侧整理（post base_date） ──
     calc_post = daily[daily.index > base_date].copy()
+
     if "nav_norm" in calc_post.columns:
         calc_post["nav_norm_full"] = (calc_post["nav_norm"] * nav_scale).round(6)
     if "reits_index_norm" in calc_post.columns:
         calc_post["reits_index_norm_full"] = (calc_post["reits_index_norm"] * idx_scale).round(6)
-
-    # net_assets → 万元
     if "net_assets" in calc_post.columns:
         calc_post["net_assets_wan"] = (calc_post["net_assets"] / 1e4).round(2)
-
-    # position_pct from holdings_daily（补充计算侧仓位）
+    # 指数绝对值：直接用原始 reits_index 列
+    if "reits_index" in calc_post.columns:
+        calc_post["reits_index_abs"] = calc_post["reits_index"].round(4)
+    # 仓位：从持仓市值 / 净资产计算
     if holdings_daily is not None and "net_assets" in calc_post.columns:
         hd = holdings_daily.copy()
         hd.index = pd.to_datetime(hd.index)
@@ -450,24 +469,24 @@ def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
             hd["market_value"].reindex(calc_post.index).ffill()
             / calc_post["net_assets"]
         ).round(4)
+    # 仓位变动：相邻两日差分（接上历史最后一日）
+    if "position_pct" in calc_post.columns:
+        last_hist_pos = float(hist_pre_all["position_pct"].iloc[-1]) if "position_pct" in hist_pre_all.columns else np.nan
+        pos_with_anchor = pd.concat([
+            pd.Series([last_hist_pos], index=[base_date]),
+            calc_post["position_pct"],
+        ])
+        calc_post["position_change"] = pos_with_anchor.diff().iloc[1:].round(4)
 
-    calc_cols = [c for c in ["nav_norm_full", "reits_index_norm_full",
-                              "net_assets_wan", "position_pct"]
+    calc_keep = [c for c in ["net_assets_wan", "reits_index_abs",
+                              "reits_index_norm_full", "nav_norm_full",
+                              "position_pct", "position_change"]
                  if c in calc_post.columns]
 
-    # ── 历史侧整理 ──
-    hist_full = history_df[history_df.index <= base_date].copy()
-    hist_full = hist_full.rename(columns={
-        "nav_norm": "nav_norm_full",
-        "reits_index_norm": "reits_index_norm_full",
-    })
-    hist_full["net_assets_wan"] = (hist_full["net_assets"] / 1e4).round(2)
-    hist_cols = ["nav_norm_full", "reits_index_norm_full",
-                 "net_assets_wan", "position_pct"]
-
+    # ── 合并 ──
     full_df = pd.concat([
-        hist_full[[c for c in hist_cols if c in hist_full.columns]],
-        calc_post[[c for c in calc_cols if c in calc_post.columns]],
+        hist_pre[[c for c in hist_keep]],
+        calc_post[[c for c in calc_keep]],
     ]).sort_index()
 
     full_df["excess_full"] = (
@@ -475,6 +494,63 @@ def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
     ).round(6)
 
     return full_df, {"nav_scale": nav_scale, "idx_scale": idx_scale}
+
+
+def save_merged_daily(full_df: pd.DataFrame, daily_trades: pd.DataFrame,
+                      out_dir: str) -> str:
+    """
+    合并 full_series（历史+计算）与 daily_trades（交易汇总），
+    输出单一 Excel，结构与 history data.xlsx 同构，扩展至最新日期。
+
+    列顺序：
+      日期 | 资产净值(万) | 指数绝对值 | 指数(基准) | 净值(基准) | 超额
+           | 仓位 | 仓位变动 | 买入(万) | 卖出(万) | 红利(万)
+           | 净买入(万) | 交易笔数 | 信号
+    """
+    df = full_df.copy()
+    df.index = pd.to_datetime(df.index)
+
+    # ── 拼入交易数据 ──
+    if daily_trades is not None and not daily_trades.empty:
+        trades = daily_trades.copy()
+        trades["date"] = pd.to_datetime(trades["date"])
+        trades = trades.set_index("date")
+        for col, scale in [("buy_amount", 1e4), ("sell_amount", 1e4),
+                            ("dividend_amount", 1e4), ("net_amount", 1e4)]:
+            if col in trades.columns:
+                df[col] = (trades[col].reindex(df.index) / scale).round(2)
+        for col in ["trade_count", "signal"]:
+            if col in trades.columns:
+                df[col] = trades[col].reindex(df.index)
+
+    # ── 列重命名（中文） ──
+    rename = {
+        "net_assets_wan":          "资产净值(万)",
+        "reits_index_abs":         "指数绝对值",
+        "reits_index_norm_full":   "指数(基准2022-11-24)",
+        "nav_norm_full":           "净值(基准2022-11-24)",
+        "excess_full":             "超额",
+        "position_pct":            "仓位",
+        "position_change":         "仓位变动",
+        "buy_amount":              "买入(万)",
+        "sell_amount":             "卖出(万)",
+        "dividend_amount":         "红利(万)",
+        "net_amount":              "净买入(万)",
+        "trade_count":             "交易笔数",
+        "signal":                  "信号",
+    }
+    col_order = list(rename.values())
+    df = df.rename(columns=rename)
+    # 保留已有列，按顺序排列，忽略缺失列
+    df = df[[c for c in col_order if c in df.columns]]
+    df.index.name = "日期"
+
+    out_path = os.path.join(out_dir, "daily_master.xlsx")
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="逐日数据")
+    print(f"  已保存: daily_master.xlsx（{len(df)} 天，"
+          f"{df.index.min().date()} ~ {df.index.max().date()}）")
+    return out_path
 
 
 def validate_history_vs_calc(history_df: pd.DataFrame, daily_df: pd.DataFrame,
