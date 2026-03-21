@@ -365,12 +365,34 @@ def load_history_data() -> pd.DataFrame:
         return None
     print(f"📖 读取历史数据：{config.FILE_HISTORY_DATA}")
     df = pd.read_excel(filepath, sheet_name=config.SHEET_HISTORY_DATA, header=0)
-    df.columns = ["date", "net_assets", "reits_index_norm", "nav_norm",
-                  "excess", "position_pct", "position_change"]
+    # 按列位置映射（兼容列名中有换行符的情况）
+    col_map = {
+        0: "date",
+        1: "net_assets",
+        2: "reits_index_abs",
+        3: "reits_index_norm",
+        4: "nav_norm",
+        5: "excess",
+        6: "position_pct",
+        7: "position_change",
+        8: "buy_amount",
+        9: "sell_amount",
+        10: "dividend_amount",
+        11: "net_amount",
+        12: "trade_count",
+        13: "signal",
+    }
+    # 只重命名已有的列数
+    rename = {df.columns[k]: v for k, v in col_map.items() if k < len(df.columns)}
+    df = df.rename(columns=rename)
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df[df["date"].notna()].sort_values("date")
-    for col in ["net_assets", "reits_index_norm", "nav_norm",
-                "excess", "position_pct", "position_change"]:
+    num_cols = [c for c in ["net_assets", "reits_index_abs", "reits_index_norm",
+                             "nav_norm", "excess", "position_pct", "position_change",
+                             "buy_amount", "sell_amount", "dividend_amount",
+                             "net_amount", "trade_count"]
+                if c in df.columns]
+    for col in num_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df.set_index("date")
     print(f"  ✅ 读取完成：{len(df)} 条，"
