@@ -433,6 +433,9 @@ def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
     print(f"  对齐系数（{ref.name.date()}）: nav_scale={nav_scale:.6f}, "
           f"idx_scale={idx_scale:.6f}")
 
+    # 仓位数据切换点：≤ 此日期用 history data，之后用测算数据
+    POSITION_CUTOFF = pd.to_datetime("2026-03-06")
+
     # ── 历史侧整理（pre base_date） ──
     hist_pre = hist_pre_all.copy()
     hist_pre = hist_pre.rename(columns={
@@ -440,7 +443,9 @@ def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
         "reits_index_norm": "reits_index_norm_full",
     })
     hist_pre["net_assets_wan"] = (hist_pre["net_assets"] / 1e4).round(2)
-    # position_change 在历史中单位为小数差分，转换为百分比差分
+    # reits_index_abs：历史文件中该列为空，从 daily_df 的原始指数列补充
+    if "reits_index" in daily.columns:
+        hist_pre["reits_index_abs"] = daily["reits_index"].reindex(hist_pre.index).round(4)
     if "position_change" in hist_pre.columns:
         hist_pre["position_change"] = hist_pre["position_change"].round(4)
 
@@ -458,10 +463,11 @@ def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
         calc_post["reits_index_norm_full"] = (calc_post["reits_index_norm"] * idx_scale).round(6)
     if "net_assets" in calc_post.columns:
         calc_post["net_assets_wan"] = (calc_post["net_assets"] / 1e4).round(2)
-    # 指数绝对值：直接用原始 reits_index 列
     if "reits_index" in calc_post.columns:
         calc_post["reits_index_abs"] = calc_post["reits_index"].round(4)
-    # 仓位：从持仓市值 / 净资产计算
+
+    # 仓位：≤ POSITION_CUTOFF 用 history_df，之后用测算（持仓市值/净资产）
+    calc_post["position_pct"] = np.nan
     if holdings_daily is not None and "net_assets" in calc_post.columns:
         hd = holdings_daily.copy()
         hd.index = pd.to_datetime(hd.index)
@@ -469,14 +475,20 @@ def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
             hd["market_value"].reindex(calc_post.index).ffill()
             / calc_post["net_assets"]
         ).round(4)
-    # 仓位变动：相邻两日差分（接上历史最后一日）
-    if "position_pct" in calc_post.columns:
-        last_hist_pos = float(hist_pre_all["position_pct"].iloc[-1]) if "position_pct" in hist_pre_all.columns else np.nan
-        pos_with_anchor = pd.concat([
-            pd.Series([last_hist_pos], index=[base_date]),
-            calc_post["position_pct"],
-        ])
-        calc_post["position_change"] = pos_with_anchor.diff().iloc[1:].round(4)
+    # 覆盖 ≤ POSITION_CUTOFF 部分为 history_df 数据
+    if "position_pct" in history_df.columns:
+        mask = calc_post.index <= POSITION_CUTOFF
+        if mask.any():
+            hist_pos = history_df["position_pct"].reindex(calc_post.index[mask])
+            calc_post.loc[mask, "position_pct"] = hist_pos.values
+
+    # 仓位变动：以历史最后一日为锚点做差分
+    last_hist_pos = float(hist_pre_all["position_pct"].iloc[-1]) if "position_pct" in hist_pre_all.columns else np.nan
+    pos_with_anchor = pd.concat([
+        pd.Series([last_hist_pos], index=[base_date]),
+        calc_post["position_pct"],
+    ])
+    calc_post["position_change"] = pos_with_anchor.diff().iloc[1:].round(4)
 
     calc_keep = [c for c in ["net_assets_wan", "reits_index_abs",
                               "reits_index_norm_full", "nav_norm_full",
@@ -552,6 +564,43 @@ def save_merged_daily(full_df: pd.DataFrame, daily_trades: pd.DataFrame,
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="逐日数据")
     print(f"  已保存: daily_master.xlsx（{len(df)} 天，{date_min} ~ {date_max}）")
+    return out_path
+
+
+def save_combined_excel(full_df: pd.DataFrame, base_date, out_dir: str) -> str:
+    """
+    将 full_series 拆成两个 sheet 保存到同一 Excel：
+      - 逐日跟踪(2026起)：base_date 之后的数据
+      - 全历史(2022起)：全部数据
+    列统一为：日期(index) | 资产净值(万) | 指数绝对值 | 指数(基准2022-11-24)
+              | 净值(基准2022-11-24) | 仓位 | 仓位变动 | 超额
+    """
+    col_map = {
+        "net_assets_wan":        "资产净值(万)",
+        "reits_index_abs":       "指数绝对值",
+        "reits_index_norm_full": "指数(基准2022-11-24)",
+        "nav_norm_full":         "净值(基准2022-11-24)",
+        "position_pct":          "仓位",
+        "position_change":       "仓位变动",
+        "excess_full":           "超额",
+    }
+    base_date = pd.to_datetime(base_date)
+
+    def _prepare(df):
+        d = df[[c for c in col_map if c in df.columns]].rename(columns=col_map).copy()
+        d.index = pd.to_datetime(d.index).strftime("%Y-%m-%d")
+        d.index.name = "日期"
+        return d
+
+    sheet_tracking = _prepare(full_df[full_df.index >= base_date])
+    sheet_history  = _prepare(full_df)
+
+    out_path = os.path.join(out_dir, "tracking_and_history.xlsx")
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        sheet_tracking.to_excel(writer, sheet_name="逐日跟踪(2026起)")
+        sheet_history.to_excel(writer, sheet_name="全历史(2022起)")
+    print(f"  已保存: tracking_and_history.xlsx"
+          f"（跟踪{len(sheet_tracking)}天 / 全历史{len(sheet_history)}天）")
     return out_path
 
 
