@@ -404,8 +404,8 @@ def save_trade_summary(trades_df: pd.DataFrame, holdings_daily: pd.DataFrame = N
         if "position_change" in display_df.columns:
             display_df["仓位变动(%)"] = display_df["position_change"].apply(lambda x: f"{x*100:+.2f}" if pd.notna(x) else "")
             display_df = display_df.drop(columns=["position_change"])
+        # 删除持仓市值列（数据不准确）
         if "position_mv" in display_df.columns:
-            display_df["持仓市值(万)"] = display_df["position_mv"].apply(lambda x: f"{x/1e4:.2f}" if pd.notna(x) else "")
             display_df = display_df.drop(columns=["position_mv"])
         if "net_assets" in display_df.columns:
             display_df["净资产(万)"] = display_df["net_assets"].apply(lambda x: f"{x/1e4:.2f}" if pd.notna(x) else "")

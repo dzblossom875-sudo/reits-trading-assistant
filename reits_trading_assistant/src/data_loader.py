@@ -535,6 +535,24 @@ def save_merged_daily(full_df: pd.DataFrame, daily_trades: pd.DataFrame,
             if col in trades.columns:
                 df[col] = trades[col].reindex(df.index)
 
+    # ── 非交易日插值：构建连续自然日索引，选择性前向填充 ──
+    full_idx = pd.date_range(start=df.index.min(), end=df.index.max(), freq="D")
+    df = df.reindex(full_idx)
+
+    # 1. 净值、仓位数据可沿用前一交易日（ffill）
+    ffill_cols = ["net_assets_wan", "reits_index_abs", "reits_index_norm_full",
+                  "nav_norm_full", "excess_full", "position_pct"]
+    for col in ffill_cols:
+        if col in df.columns:
+            df[col] = df[col].ffill()
+
+    # 2. 仓位变动需基于ffill后的仓位逐日重新计算
+    if "position_pct" in df.columns:
+        df["position_change"] = df["position_pct"].diff()
+
+    # 3. 买入、卖出、红利、净买入数据不插值（非交易日保持NaN）
+    # trade_count、signal等非数值列保持NaN
+
     # ── 列重命名（中文） ──
     rename = {
         "net_assets_wan":          "资产净值(万)",
@@ -560,10 +578,19 @@ def save_merged_daily(full_df: pd.DataFrame, daily_trades: pd.DataFrame,
     df.index = df.index.strftime("%Y-%m-%d")
     df.index.name = "日期"
 
+    # ── 保存到带时间戳的 Excel（原有功能） ──
     out_path = os.path.join(out_dir, "daily_master.xlsx")
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="逐日数据")
     print(f"  已保存: daily_master.xlsx（{len(df)} 天，{date_min} ~ {date_max}）")
+
+    # ── 保存到固定路径 Parquet（防腐层） ──
+    # 在 strftime 之前保存，保持 DatetimeIndex
+    parquet_path = os.path.join(config.DATA_PROCESSED_DIR, "daily_master.parquet")
+    df_parquet = df.copy()
+    df_parquet.index = pd.to_datetime(df_parquet.index)
+    df_parquet.to_parquet(parquet_path, index=True)
+
     return out_path
 
 

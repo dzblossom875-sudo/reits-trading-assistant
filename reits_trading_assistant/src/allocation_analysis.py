@@ -86,9 +86,11 @@ def calc_sector_allocation_bias(holdings_df: pd.DataFrame, weight_df: pd.DataFra
 
 
 def save_allocation_bias(detail_df: pd.DataFrame, sector_df: pd.DataFrame, output_dir: str):
-    """保存配置偏移结果到Excel的不同sheet"""
+    """保存配置偏移结果到Excel和固定路径Parquet"""
     if detail_df is None and sector_df is None:
         return None
+
+    # 1. 保存到带时间戳的Excel（原有功能）
     out_path = os.path.join(output_dir, "allocation_bias.xlsx")
     with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
         if detail_df is not None:
@@ -111,4 +113,22 @@ def save_allocation_bias(detail_df: pd.DataFrame, sector_df: pd.DataFrame, outpu
                 "index_weight": "指数权重", "weight_bias": "偏移",
             })
             display_df.to_excel(writer, sheet_name="板块配置偏移", index=False)
+
+    # 2. 保存到固定路径Parquet（防腐层）
+    # 确保 data/processed 目录存在
+    processed_dir = os.path.join(config.DATA_PROCESSED_DIR)
+    os.makedirs(processed_dir, exist_ok=True)
+
+    if sector_df is not None:
+        # 前向填充保证数据连贯性，保存为Parquet
+        sector_parquet = sector_df.copy().ffill()
+        sector_parquet_path = os.path.join(processed_dir, "allocation_bias_sector.parquet")
+        sector_parquet.to_parquet(sector_parquet_path, index=False)
+
+    if detail_df is not None:
+        # 前向填充保证数据连贯性，保存为Parquet
+        detail_parquet = detail_df.copy().ffill()
+        detail_parquet_path = os.path.join(processed_dir, "allocation_bias_detail.parquet")
+        detail_parquet.to_parquet(detail_parquet_path, index=False)
+
     return out_path

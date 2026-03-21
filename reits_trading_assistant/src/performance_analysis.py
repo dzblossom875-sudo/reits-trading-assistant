@@ -181,6 +181,10 @@ def calc_metrics_by_period(daily_df: pd.DataFrame) -> pd.DataFrame:
                     idx_start = prev_idx_val
                 idx_ret = (idx_end / idx_start - 1) * 100 if idx_start != 0 else np.nan
 
+            # 跳过单日月份（如 2025-12-31 至 2025-12-31）
+            if start_date.strftime('%Y-%m-%d') == nav_end_date.strftime('%Y-%m-%d'):
+                continue
+
             results.append({
                 "period": str(ym),
                 "start_date": start_date.strftime('%Y-%m-%d'),
@@ -393,6 +397,31 @@ def save_performance_summary(metrics: dict, period_df: pd.DataFrame = None):
             }
             display_df = display_df.rename(columns=col_rename)
             display_df.to_excel(writer, sheet_name="分月表现", index=False)
+
+    # 保存到固定路径 Parquet（防腐层）
+    processed_dir = config.DATA_PROCESSED_DIR
+    os.makedirs(processed_dir, exist_ok=True)
+
+    # 保存总体指标（转置后保存，便于看板读取）
+    metrics_df = pd.DataFrame(rows).set_index("指标")
+    metrics_df.columns = [str(c) for c in metrics_df.columns]
+    metrics_parquet_path = os.path.join(processed_dir, "performance_summary_metrics.parquet")
+    metrics_df.to_parquet(metrics_parquet_path, engine='pyarrow')
+
+    # 保存分月表现（使用中文列名，与Excel一致）
+    if period_df is not None and not period_df.empty:
+        # 先进行列名转换（与Excel输出保持一致）
+        col_rename = {
+            "period": "期间",
+            "start_date": "起始日",
+            "end_date": "结束日",
+            "nav_return": f"{config.ACCOUNT_NAME}收益",
+            "idx_return": "指数收益",
+            "excess": "超额收益",
+        }
+        # 保存为 Parquet（使用原始英文列名，避免编码问题）
+        monthly_parquet_path = os.path.join(processed_dir, "performance_summary_monthly.parquet")
+        period_df.to_parquet(monthly_parquet_path, index=False, engine='pyarrow')
 
     return out_path
 
