@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-03-21 - 文档归档（MEMORY）
+
+**工具**: Cursor
+
+### 文档
+- **docs**: 同步 `MEMORY.md` 当前状态与开发日志（持仓通配符、日度零值填充、`ME` 重采样）
+
+---
+
+## 2026-03-21 - `7e9c03a` / `dc334ec`
+
+**工具**: Cursor
+
+### 修复与优化
+- **fix(data_loader)**: 持仓查询文件名支持通配符 `统计分析-持仓查询-组合持仓查询*.xlsx`，读取修改时间最新的文件
+- **fix(data_loader)**: `load_holdings_timeseries` 日度总市值为 0 时按上一有效日前向填充，缓解导出缺行导致的假零仓位
+- **fix(sector_analysis)**: 月度重采样 `resample('M')` → `resample('ME')`，消除 pandas 弃用警告
+
+### 关联文件
+- `reits_trading_assistant/config.py`
+- `reits_trading_assistant/src/data_loader.py`
+- `reits_trading_assistant/src/sector_analysis.py`
+
+---
+
 ## 2026-03-21 - `5ddf351`
 
 **工具**: Cursor

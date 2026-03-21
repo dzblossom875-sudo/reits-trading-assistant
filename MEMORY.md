@@ -4,12 +4,10 @@
 
 ## 🔄 当前状态
 - **最后操作工具**：Cursor
-- **最后操作**：新增逐日跟踪表/仓位变动图/净买入图，修复报告无数据，补全指数夏普，trade_flow图左右轴互换
-- **最后 Commit**：`5ddf351`
+- **最后操作**：持仓文件通配符取最新、日度持仓市值零值前向填充；板块月度 resample 改为 `ME`；归档 MEMORY/CHANGELOG
+- **最后 Commit**：`7e9c03a`（持仓通配符与日度零值填充）；`dc334ec`（板块 `ME`）；文档见 `docs/CHANGELOG.md`
 - **待续事项**：
-  - [ ] 验证 daily_tracking.xlsx 仓位数据覆盖率（持仓时序仅30天，跟踪表80天）
-  - [ ] sector_analysis.py resample('M') 警告改为 'ME'
-  - [ ] 考虑将 output 历史目录清理或归档策略
+  - [ ] 考虑将 output 历史目录清理或归档策略（可选）
 
 ## 📐 架构快照
 
@@ -120,6 +118,22 @@ raw/交易所成交.xlsx  ──┘
   - 报告生成应在所有分析完成后调用，确保数据变量可用
   - 不要依赖中间文件格式，直接传递 DataFrame 更可靠
 - **Commit**：`5ddf351`
+
+#### [板块分析] 月度重采样频率别名
+- **模块**：`src/sector_analysis.py`
+- **逻辑变更**：`resample('M')` → `resample('ME')`，消除 pandas 弃用警告
+- **避坑指南**：频率别名随 pandas 版本演进，以官方文档为准
+- **Commit**：`dc334ec`
+
+#### [数据加载] 持仓文件通配符与日度市值零值处理
+- **模块**：`config.py`, `src/data_loader.py`
+- **逻辑变更**：
+  - `FILE_HOLDINGS` 支持 `组合持仓查询*.xlsx`，`load_holdings` / `load_holdings_timeseries` 取目录内修改时间最新文件
+  - 日度汇总市值为 0 时视为导出缺行，按上一有效日总市值前向填充（避免逐日仓位长段为 0）；真清仓需源数据能体现减仓轨迹
+- **避坑指南**：
+  - 多版本持仓文件并存时以文件 mtime 为准，勿混用旧表
+  - 零值填充与真实空仓需结合业务核对
+- **Commit**：`7e9c03a`
 
 ---
 
