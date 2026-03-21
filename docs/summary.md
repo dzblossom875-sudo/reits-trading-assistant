@@ -100,16 +100,16 @@
 
 ## 输出文件清单（2026-03-21 更新）
 
-| 文件 | 内容 | 行数 |
+| 文件 | 内容 | 备注 |
 |------|------|------|
-| `daily_master.xlsx` | 历史+计算完整主表（2022-11-24起） | 831行 |
-| `full_series.csv` | 同上，CSV格式 | 831行 |
-| `validation_history_vs_calc.xlsx` | 2026+历史vs计算对比 | 48行 |
-| `performance_summary.xlsx` | 业绩指标+分月收益 | — |
+| `daily_master.xlsx` | 历史+计算完整主表（2022-11-24起），含交易数据 | 831行，13列 |
+| `performance_summary.xlsx` | 业绩指标（总体+分月） | — |
 | `daily_tracking.xlsx` | 日频净值+仓位（BASE_DATE起） | 80行 |
-| `trade_summary.xlsx` | 逐日交易汇总 | — |
+| `trade_summary.xlsx` | 逐日交易汇总+红利明细 | — |
 | `allocation_bias.xlsx` | 配置偏移（个券+板块） | — |
-| `timing_analysis.xlsx` | 择时事件分析 | — |
+| `timing_analysis.xlsx` | 择时事件+胜率统计 | — |
+
+> 已移除：`full_series.csv`（内容含于daily_master）、`tracking_and_history.xlsx`（内容含于其他文件）、`validation_history_vs_calc.xlsx`（验证通过后无需保留）
 
 ### daily_master.xlsx 列结构
 ```

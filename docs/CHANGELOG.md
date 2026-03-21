@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-03-21 20:10 - `6a81ae5`
+
+**工具**：Claude Code
+
+### 清理重复输出
+- **chore(main)**: 移除 `full_series.csv`（内容已含于 `daily_master.xlsx`）
+- **chore(main)**: 移除 `tracking_and_history.xlsx`（内容已含于其他文件）
+- **chore(main)**: 移除 `validation_history_vs_calc.xlsx`（验证已通过，改为仅打印控制台摘要）
+
+### 关联文件
+- `reits_trading_assistant/main.py`
+
+---
+
 ## 2026-03-21 19:45 - `7fcc34d`
 
 **工具**：Claude Code
