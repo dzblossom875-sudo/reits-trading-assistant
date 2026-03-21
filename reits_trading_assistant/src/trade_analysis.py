@@ -28,6 +28,14 @@ def _setup_font():
 _setup_font()
 
 
+def _apply_date_format(ax):
+    """自动选择合适的日期间隔，格式标注到日"""
+    locator = mdates.AutoDateLocator(minticks=6, maxticks=10)
+    formatter = mdates.ConciseDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+
+
 def summarize_trades(trades_df: pd.DataFrame, holdings_daily: pd.DataFrame = None, net_assets: pd.DataFrame = None) -> pd.DataFrame:
     """
     按日汇总净买入（买入-卖出），识别大幅加减仓
@@ -145,7 +153,7 @@ def plot_trade_flow(trades_df: pd.DataFrame, index_df: pd.DataFrame):
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=9, ncol=2)
 
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    _apply_date_format(ax1)
     plt.xticks(rotation=30)
     ax1.set_title(f"资金流向与指数走势（基准日：{base_date.strftime('%Y-%m-%d')}）",
                   fontsize=13, fontweight="bold")
@@ -208,7 +216,7 @@ def plot_net_buy_vs_index(trades_df: pd.DataFrame, index_df: pd.DataFrame):
     ax1.legend(lines1 + legend_patches, labels1 + ["净买入", "净卖出"],
                loc="upper left", fontsize=9, ncol=2)
 
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    _apply_date_format(ax1)
     plt.xticks(rotation=30)
     ax1.set_title(f"净买入与指数走势（基准日：{base_date.strftime('%Y-%m-%d')}）",
                   fontsize=13, fontweight="bold")
@@ -259,39 +267,96 @@ def plot_sector_rotation(trades_df: pd.DataFrame):
 
 def plot_position_vs_index(daily_df: pd.DataFrame, index_df: pd.DataFrame):
     """
-    仓位比例 vs 指数走势图
-    - 左轴：仓位比例(%)
+    仓位比例 vs 指数走势图（面积图）
+    - 左轴：仓位比例(%) — fill_between 面积图
     - 右轴：中证REITs指数
+    - 打印每日计算过程；单日变动>10%标注异常值，控制台确认是否采纳
     """
     if daily_df is None or "position_pct" not in daily_df.columns or daily_df["position_pct"].isna().all():
         return None
 
     daily = daily_df.copy()
     daily["date"] = pd.to_datetime(daily["date"])
-
-    # 获取全量数据
     base_date = pd.to_datetime(config.BASE_DATE)
-    daily_filtered = daily[daily["date"] >= base_date].copy()
+    daily_filtered = daily[daily["date"] >= base_date].copy().sort_values("date")
 
     if daily_filtered.empty:
         return None
 
-    # 准备指数数据
+    # ── 打印仓位计算过程 ──
+    print("\n📊 仓位计算过程：")
+    print(f"{'日期':<12} {'持仓市值(万)':>12} {'净资产(万)':>12} {'仓位(%)':>8} {'变动(ppt)':>10}")
+    print("-" * 60)
+    prev_pct = None
+    for _, row in daily_filtered.iterrows():
+        pct = row["position_pct"] * 100 if pd.notna(row["position_pct"]) else float("nan")
+        mv = row["position_mv"] / 1e4 if "position_mv" in row and pd.notna(row.get("position_mv")) else float("nan")
+        na = row["net_assets"] / 1e4 if "net_assets" in row and pd.notna(row.get("net_assets")) else float("nan")
+        chg = (pct - prev_pct) if prev_pct is not None and pd.notna(pct) else float("nan")
+        flag = " ⚠️" if abs(chg) > 10 else ""
+        print(f"{str(row['date'].date()):<12} {mv:>12.1f} {na:>12.1f} {pct:>8.2f} {chg:>+10.2f}{flag}")
+        prev_pct = pct if pd.notna(pct) else prev_pct
+
+    # ── 检测单日变动>10%的异常点 ──
+    pos_series = daily_filtered["position_pct"].copy()
+    pos_chg = pos_series.diff()
+    anomaly_mask = pos_chg.abs() > 0.10
+    anomaly_dates = daily_filtered.loc[anomaly_mask.values, "date"].tolist()
+
+    excluded_dates = set()
+    if anomaly_dates:
+        print(f"\n⚠️  检测到 {len(anomaly_dates)} 个仓位单日变动超过10%的异常点：")
+        for d in anomaly_dates:
+            idx_pos = daily_filtered[daily_filtered["date"] == d].index[0]
+            chg_val = pos_chg.loc[idx_pos] * 100
+            pct_val = pos_series.loc[idx_pos] * 100
+            print(f"  {d.date()}: 仓位={pct_val:.1f}%, 变动={chg_val:+.1f}ppt")
+        try:
+            ans = input("\n是否排除以上异常点？[y=排除 / n=保留，默认保留] ").strip().lower()
+        except EOFError:
+            ans = ""
+            print("  (非交互模式，默认保留)")
+        if ans == "y":
+            excluded_dates = set(d.date() for d in anomaly_dates)
+            print(f"  已排除 {len(excluded_dates)} 个异常点")
+        else:
+            print("  保留所有数据点")
+
+    # 过滤异常点（如用户选择排除）
+    if excluded_dates:
+        daily_filtered = daily_filtered[~daily_filtered["date"].dt.date.isin(excluded_dates)].copy()
+
+    # ── 准备指数数据 ──
     idx = index_df.copy()
     idx.index = pd.to_datetime(idx.index)
     idx_filtered = idx[idx.index >= base_date]
 
     fig, ax1 = plt.subplots(figsize=(14, 6))
 
-    # 左轴：仓位比例
-    ax1.plot(daily_filtered["date"], daily_filtered["position_pct"] * 100,
-             color="#1f77b4", linewidth=2, marker="o", markersize=4,
-             label="仓位比例(%)", zorder=3)
+    # 左轴：仓位比例 — 面积图
+    dates = daily_filtered["date"].values
+    pos_pct = daily_filtered["position_pct"].values * 100
+    ax1.fill_between(dates, 0, pos_pct, alpha=0.35, color="#1f77b4", label="仓位比例(%)", zorder=3)
+    ax1.plot(dates, pos_pct, color="#1f77b4", linewidth=1.5, zorder=4)
     ax1.set_ylabel("仓位比例(%)", fontsize=11, color="#1f77b4")
-    ax1.set_ylim(0, 120)
+    y_max = max(120, float(np.nanmax(pos_pct)) * 1.1) if len(pos_pct) > 0 else 120
+    ax1.set_ylim(0, y_max)
     ax1.tick_params(axis='y', labelcolor="#1f77b4")
-    ax1.axhline(100, color="gray", linestyle="--", alpha=0.5, label="满仓(100%)")
+    ax1.axhline(100, color="gray", linestyle="--", linewidth=1, alpha=0.6, label="满仓(100%)")
     ax1.yaxis.grid(True, alpha=0.3)
+    ax1.set_axisbelow(True)
+
+    # 标注未被排除的异常点
+    remaining_anomaly = [d for d in anomaly_dates if d.date() not in excluded_dates]
+    for d in remaining_anomaly:
+        row = daily_filtered[daily_filtered["date"] == d]
+        if not row.empty:
+            pct_v = row["position_pct"].iloc[0] * 100
+            ax1.annotate(f"异常{pct_v:.0f}%",
+                        xy=(d, pct_v), xytext=(0, 12),
+                        textcoords="offset points",
+                        fontsize=8, color="#d62728",
+                        arrowprops=dict(arrowstyle="-", color="#d62728", lw=0.8))
 
     # 右轴：指数
     ax2 = ax1.twinx()
@@ -299,16 +364,15 @@ def plot_position_vs_index(daily_df: pd.DataFrame, index_df: pd.DataFrame):
         idx_clean = idx_filtered["reits_index"].dropna()
         if not idx_clean.empty:
             ax2.plot(idx_clean.index, idx_clean.values,
-                     color="#ff7f0e", linewidth=1.5, label="中证REITs指数", zorder=2)
+                     color="#ff7f0e", linewidth=1.8, label="中证REITs指数", zorder=2)
             ax2.set_ylabel("中证REITs指数", fontsize=11, color="#ff7f0e")
             ax2.tick_params(axis='y', labelcolor="#ff7f0e")
 
-    # 图例
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels() if "reits_index" in idx_filtered.columns else ([], [])
     ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=9)
 
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    _apply_date_format(ax1)
     plt.xticks(rotation=30)
     ax1.set_title(f"仓位比例 vs 中证REITs指数（基准日：{base_date.strftime('%Y-%m-%d')}）",
                   fontsize=13, fontweight="bold")

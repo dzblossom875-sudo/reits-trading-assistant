@@ -94,59 +94,112 @@ def calc_sector_returns(reits_prices: pd.DataFrame, reits_info: pd.DataFrame, pe
 def plot_sector_performance(trades_df: pd.DataFrame, reits_info: pd.DataFrame = None,
                            sector_returns: pd.DataFrame = None, period_label=""):
     """
-    生成板块交易金额和涨跌幅对比图
-    - 横坐标左轴：板块区间涨跌幅（%）
-    - 横坐标右轴：账户对应期间板块净买入金额
-    标注口径：个股等权
+    板块表现 vs 交易行为对比图
+
+    有涨跌幅数据时：
+      散点/气泡图（X=涨跌幅%, Y=净买入万元），气泡大小=总交易量
+      四象限标注，直观回答"买没买对板块"
+
+    无涨跌幅数据时：
+      左右并排水平柱状图（左=买入/卖出，右=净买入）
     """
     sector_df = analyze_sector_trades(trades_df, reits_info)
     if sector_df.empty:
         return None
 
-    fig, ax1 = plt.subplots(figsize=(13, 7))
+    title_suffix = f" - {period_label}" if period_label else ""
 
-    # 左轴：涨跌幅柱状图（如果有数据）
     if sector_returns is not None and not sector_returns.empty:
-        # 合并数据
-        merged = sector_df.merge(sector_returns, on="sector", how="left")
-        merged = merged.sort_values("avg_return_pct", ascending=True)  # 从左到右涨跌幅递增
-        colors = ["#d62728" if x > 0 else "#1f77b4" for x in merged["avg_return_pct"].fillna(0)]
-        ax1.barh(range(len(merged)), merged["avg_return_pct"].fillna(0), color=colors, alpha=0.7, height=0.4)
-        ax1.set_yticks(range(len(merged)))
-        ax1.set_yticklabels(merged["sector"].tolist(), fontsize=10)
-        ax1.set_xlabel("板块涨跌幅（%，个股等权）", fontsize=11, color="#333")
-        ax1.axvline(0, color="gray", linewidth=0.8, linestyle="-", alpha=0.5)
-        ax1.set_ylabel("板块", fontsize=11)
-        title_suffix = f" - {period_label}" if period_label else ""
-        ax1.set_title(f"板块表现 vs 交易金额{title_suffix}\n（涨跌幅口径：个股等权）", fontsize=13, fontweight="bold")
+        # ── 散点气泡图：涨跌幅 vs 净买入 ──
+        merged = sector_df.merge(sector_returns, on="sector", how="left").copy()
+        merged["avg_return_pct"] = merged["avg_return_pct"].fillna(0)
+        merged["net_wan"] = merged["net_amount"] / 1e4
+        merged["total_wan"] = merged["total_amount"] / 1e4
+
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        # 气泡大小正比于总交易量
+        max_total = merged["total_wan"].max()
+        sizes = (merged["total_wan"] / max_total * 400).clip(lower=40) if max_total > 0 else [80] * len(merged)
+        colors = ["#d62728" if v > 0 else "#1f77b4" for v in merged["net_wan"]]
+
+        ax.scatter(merged["avg_return_pct"], merged["net_wan"],
+                   s=sizes, c=colors, alpha=0.75, zorder=5,
+                   edgecolors="white", linewidths=0.8)
+
+        # 板块名标注
+        for _, row in merged.iterrows():
+            ax.annotate(row["sector"],
+                        xy=(row["avg_return_pct"], row["net_wan"]),
+                        xytext=(6, 4), textcoords="offset points",
+                        fontsize=9, color="#333")
+
+        # 四象限参考线
+        ax.axvline(0, color="gray", linewidth=1, linestyle="--", alpha=0.6)
+        ax.axhline(0, color="gray", linewidth=1, linestyle="--", alpha=0.6)
+
+        # 四象限文字说明
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        xr, yr = xlim[1] - xlim[0], ylim[1] - ylim[0]
+        quadrant_style = dict(fontsize=8, alpha=0.45, style="italic")
+        ax.text(xlim[1] - xr*0.01, ylim[1] - yr*0.02, "涨 & 净买入\n【买对了】",
+                ha="right", va="top", color="#2ca02c", **quadrant_style)
+        ax.text(xlim[0] + xr*0.01, ylim[1] - yr*0.02, "跌 & 净买入\n【买错了】",
+                ha="left",  va="top", color="#d62728", **quadrant_style)
+        ax.text(xlim[1] - xr*0.01, ylim[0] + yr*0.02, "涨 & 净卖出\n【卖早了】",
+                ha="right", va="bottom", color="#ff7f0e", **quadrant_style)
+        ax.text(xlim[0] + xr*0.01, ylim[0] + yr*0.02, "跌 & 净卖出\n【躲过了】",
+                ha="left",  va="bottom", color="#2ca02c", **quadrant_style)
+
+        ax.set_xlabel("板块区间涨跌幅（%，个股等权）", fontsize=11)
+        ax.set_ylabel("净买入金额（万元）", fontsize=11)
+        ax.set_title(
+            f"板块交易行为 vs 涨跌幅{title_suffix}\n"
+            "气泡大小 = 总交易量   红 = 净买入   蓝 = 净卖出",
+            fontsize=13, fontweight="bold"
+        )
+        ax.yaxis.grid(True, alpha=0.25)
+        ax.xaxis.grid(True, alpha=0.25)
+        ax.set_axisbelow(True)
+
     else:
-        # 没有涨跌幅数据，只显示交易金额
-        x = range(len(sector_df))
-        width = 0.35
-        bars_buy = ax1.bar([i - width / 2 for i in x], sector_df["buy_amount"] / 1e6,
-                          width=width, label="买入", color="#d62728", alpha=0.8)
-        bars_sell = ax1.bar([i + width / 2 for i in x], sector_df["sell_amount"] / 1e6,
-                           width=width, label="卖出", color="#1f77b4", alpha=0.8)
-        ax1.set_xticks(list(x))
-        ax1.set_xticklabels(sector_df["sector"].tolist(), rotation=30, ha="right", fontsize=10)
-        ax1.set_ylabel("金额（百万元）", fontsize=11)
-        ax1.set_title("各板块交易金额分布", fontsize=13, fontweight="bold")
-        ax1.legend(fontsize=10)
+        # ── 无涨跌幅：左右并排水平柱状图 ──
+        df = sector_df.sort_values("total_amount", ascending=True).reset_index(drop=True)
+        sectors = df["sector"].tolist()
+        n = len(sectors)
+        y = np.arange(n)
+        bar_h = 0.35
 
-    # 右轴：净买入金额（如果有涨跌幅数据）
-    if sector_returns is not None and not sector_returns.empty:
-        ax2 = ax1.twinx()
-        merged_sorted = sector_df.merge(sector_returns, on="sector", how="left").sort_values("avg_return_pct", ascending=True)
-        colors_net = ["#2ca02c" if x > 0 else "#ff7f0e" for x in merged_sorted["net_amount"]]
-        ax2.scatter(merged_sorted["net_amount"] / 1e4, range(len(merged_sorted)),
-                   c=colors_net, s=100, alpha=0.8, zorder=5, label="净买入")
-        ax2.set_ylabel("净买入金额（万元）", fontsize=11, color="#2ca02c")
-        ax2.tick_params(axis='y', labelcolor="#2ca02c")
-        ax2.set_yticks(range(len(merged_sorted)))
-        ax2.set_yticklabels(merged_sorted["sector"].tolist(), fontsize=10)
+        fig, (ax_left, ax_right) = plt.subplots(
+            1, 2, figsize=(14, max(5, n * 0.9)), sharey=True
+        )
+        fig.subplots_adjust(wspace=0.05)
 
-    ax1.yaxis.grid(True, alpha=0.3)
-    ax1.set_axisbelow(True)
+        # 左图：买入 / 卖出
+        ax_left.barh(y + bar_h/2, df["buy_amount"] / 1e4,  height=bar_h,
+                     color="#d62728", alpha=0.8, label="买入")
+        ax_left.barh(y - bar_h/2, df["sell_amount"] / 1e4, height=bar_h,
+                     color="#1f77b4", alpha=0.8, label="卖出")
+        ax_left.set_yticks(y)
+        ax_left.set_yticklabels(sectors, fontsize=10)
+        ax_left.set_xlabel("金额（万元）", fontsize=10)
+        ax_left.set_title("买入 / 卖出金额", fontsize=11)
+        ax_left.legend(fontsize=9, loc="lower right")
+        ax_left.xaxis.grid(True, alpha=0.3)
+        ax_left.set_axisbelow(True)
+
+        # 右图：净买入
+        net_colors = ["#2ca02c" if v > 0 else "#ff7f0e" for v in df["net_amount"]]
+        ax_right.barh(y, df["net_amount"] / 1e4, height=0.5,
+                      color=net_colors, alpha=0.85)
+        ax_right.axvline(0, color="gray", linewidth=0.8, linestyle="-")
+        ax_right.set_xlabel("净买入金额（万元）", fontsize=10)
+        ax_right.set_title("净买入金额", fontsize=11)
+        ax_right.xaxis.grid(True, alpha=0.3)
+        ax_right.set_axisbelow(True)
+
+        fig.suptitle(f"各板块交易金额分布{title_suffix}", fontsize=13, fontweight="bold")
 
     plt.tight_layout()
     out_path = os.path.join(config.OUTPUT_FIGURES_DIR, "sector_performance.png")

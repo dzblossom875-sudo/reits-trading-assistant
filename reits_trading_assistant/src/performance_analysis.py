@@ -198,28 +198,45 @@ def calc_metrics_by_period(daily_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(results)
 
 
+def _apply_date_format(ax):
+    """自动选择合适的日期间隔，格式标注到日"""
+    locator = mdates.AutoDateLocator(minticks=6, maxticks=10)
+    formatter = mdates.ConciseDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+
+
 def plot_nav_vs_index(daily_df: pd.DataFrame):
     """
     净值 vs 指数归一化对比图
-    - 基准日归一化
+    - 两条线对齐到共同起点（1.0）
     - 左轴：净值指数、指数
     - 右轴：超额（nav-index, %）
-    - 起始日=基准日
     """
     df = daily_df.copy()
     df.index = pd.to_datetime(df.index)
     df = df.sort_index()
 
-    # 以基准日为起点
     base_date = pd.to_datetime(config.BASE_DATE)
     df = df[df.index >= base_date]
 
     if df.empty:
         return None
 
+    # 找两条线共同有效的第一个日期，统一归一化到1.0（解决起点不对齐）
+    if "nav_norm" in df.columns and "reits_index_norm" in df.columns:
+        both = df[["nav_norm", "reits_index_norm"]].dropna()
+        if not both.empty:
+            start_nav = both["nav_norm"].iloc[0]
+            start_idx = both["reits_index_norm"].iloc[0]
+            df = df[df.index >= both.index[0]].copy()
+            df["nav_norm"] = df["nav_norm"] / start_nav
+            df["reits_index_norm"] = df["reits_index_norm"] / start_idx
+            if "excess_pct" in df.columns:
+                df["excess_pct"] = (df["nav_norm"] - df["reits_index_norm"]) * 100
+
     fig, ax1 = plt.subplots(figsize=(14, 6))
 
-    # 左轴：归一化净值和指数
     plotted = False
     if "nav_norm" in df.columns:
         nav_clean = df["nav_norm"].dropna()
@@ -240,7 +257,7 @@ def plot_nav_vs_index(daily_df: pd.DataFrame):
         return None
 
     ax1.axhline(1.0, color="gray", linewidth=0.8, linestyle=":", alpha=0.7)
-    ax1.set_ylabel("归一化净值（基准=1）", fontsize=11, color="#333")
+    ax1.set_ylabel("归一化净值（起点=1）", fontsize=11, color="#333")
     ax1.set_xlabel("日期", fontsize=11)
     ax1.set_title(f"{config.ACCOUNT_NAME}净值 vs 中证REITs指数（基准日：{base_date.strftime('%Y-%m-%d')}）",
                   fontsize=13, fontweight="bold")
@@ -248,10 +265,9 @@ def plot_nav_vs_index(daily_df: pd.DataFrame):
     ax1.yaxis.grid(True, alpha=0.3)
     ax1.set_axisbelow(True)
 
-    # 右轴：超额收益
     ax2 = ax1.twinx()
     if "nav_norm" in df.columns and "reits_index_norm" in df.columns:
-        excess = (df["nav_norm"] - df["reits_index_norm"]) * 100  # 转为百分比
+        excess = (df["nav_norm"] - df["reits_index_norm"]) * 100
         excess_clean = excess.dropna()
         if not excess_clean.empty:
             color_excess = "#2ca02c"
@@ -265,12 +281,11 @@ def plot_nav_vs_index(daily_df: pd.DataFrame):
             ax2.tick_params(axis='y', labelcolor=color_excess)
             ax2.axhline(0, color=color_excess, linewidth=0.5, linestyle="-", alpha=0.5)
 
-    # 合并图例
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=10)
 
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    _apply_date_format(ax1)
     plt.xticks(rotation=30)
     plt.tight_layout()
     out_path = os.path.join(config.OUTPUT_FIGURES_DIR, "nav_vs_index.png")
@@ -470,7 +485,7 @@ def plot_position_change_vs_index(tracking_df, daily_df):
     ax1.legend(lines1 + legend_patches, labels1 + ["加仓", "减仓"],
                loc="upper left", fontsize=9)
 
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    _apply_date_format(ax1)
     plt.xticks(rotation=30)
     ax1.set_title(f"仓位变动 vs 中证REITs指数（基准日：{base_date.strftime('%Y-%m-%d')}）",
                   fontsize=13, fontweight="bold")
