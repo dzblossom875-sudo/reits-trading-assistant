@@ -11,20 +11,52 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 os.chdir(_HERE)
 
 # ================= 1. 页面配置与动态主题 =================
-st.set_page_config(page_title="REITs 二级策略看板", layout="wide", page_icon="📈")
+st.set_page_config(page_title="REITs二级策略跟踪", layout="wide", page_icon="📈")
 
 st.sidebar.header("🎨 视觉与排版")
-theme_mode = st.sidebar.radio("显示主题", ["Light 模式", "Dark 模式"], index=0)
+theme_mode = st.sidebar.radio(
+    "配色方案",
+    ["User · Cloud Blue", "Company · 平安集团"],
+    index=0,
+)
 aspect_ratio = st.sidebar.radio(
     "页面比例",
     ["研报长条 (2.5:1, 留白)", "标准宽屏 (16:9, 铺满)"],
     index=0,
 )
 
-if theme_mode == "Dark 模式":
-    bg_color, text_color, grid_color, template = "#0e1117", "#e8e6e0", "#333333", "plotly_dark"
-else:
-    bg_color, text_color, grid_color, template = "#ffffff", "#1a1a1a", "#eeeeee", "plotly_white"
+if theme_mode == "User · Cloud Blue":
+    bg_color        = "#f2f6fb"
+    text_color      = "#0a1428"
+    grid_color      = "rgba(26,74,128,0.10)"
+    template        = "plotly_white"
+    nav_color       = "#1a4a80"                   # s1 navy  —— 账户净值
+    idx_color       = "#4a78b8"                   # steel blue —— 指数（提高饱和度）
+    excess_fill     = "rgba(26,74,128,0.18)"      # 超额面积填充（提高不透明度）
+    bull_color      = "#1a6ca0"                   # steel blue —— 正向/超配（明显区别于平安绿）
+    bear_color      = "#c85a00"                   # burnt orange —— 负向/低配
+    pos_line        = "#006080"                   # deep teal —— 仓位线
+    pos_fill        = "rgba(0,96,128,0.22)"       # 仓位面积（提高不透明度）
+    metric_color    = "#1a4a80"
+    _bubble_palette = ["#1a4a80","#c85a00","#00806a","#8b2fc9","#d4a000",
+                       "#006080","#c83060","#3a8040","#804020","#205080"]
+else:  # Company · 平安集团
+    bg_color        = "#F8F6F4"
+    text_color      = "#1A1A1A"
+    grid_color      = "rgba(0,0,0,0.08)"
+    template        = "plotly_white"
+    nav_color       = "#F04E23"                   # 平安橙 —— 账户净值
+    idx_color       = "#909090"                   # medium grey —— 指数（略提亮可读性）
+    excess_fill     = "rgba(240,78,35,0.18)"      # 超额面积填充（提高不透明度）
+    bull_color      = "#007D5E"                   # 平安绿 —— 正向/超配
+    bear_color      = "#C83800"                   # 深橙红 —— 负向/低配
+    pos_line        = "#007D5E"                   # 平安绿 —— 仓位线（区别于净值橙）
+    pos_fill        = "rgba(0,125,94,0.22)"       # 仓位面积（提高不透明度）
+    metric_color    = "#F04E23"
+    _bubble_palette = ["#F04E23","#007D5E","#1a4a80","#8b2fc9","#d4a000",
+                       "#006080","#c83060","#3a8040","#804020","#205080"]
+
+_font9 = dict(size=11, color=text_color)
 
 if aspect_ratio == "研报长条 (2.5:1, 留白)":
     container_width, chart_height = 1100, 440
@@ -38,7 +70,7 @@ st.markdown(f"""
         padding-top: 1.5rem;
         margin: 0 auto;
     }}
-    [data-testid="stMetricValue"] {{font-size: 1.8rem; color: #d62728; font-weight: 700;}}
+    [data-testid="stMetricValue"] {{font-size: 1.8rem; color: {metric_color}; font-weight: 700;}}
     .stMetric {{background-color: {bg_color}; padding: 15px; border-radius: 10px; border: 1px solid {grid_color};}}
     </style>
     """, unsafe_allow_html=True)
@@ -59,12 +91,14 @@ def load_all_data():
         prices_df = pd.read_csv(
             "data/processed/wind_prices_cache.csv", index_col=0, parse_dates=True
         )
-        return df.ffill(), perf_metrics, perf_monthly, bias_df, trades_df, info_df, prices_df
+        holdings_df = pd.read_csv("data/processed/holdings.csv")
+        holdings_df["code"] = holdings_df["code"].astype(str).str.zfill(6)
+        return df.ffill(), perf_metrics, perf_monthly, bias_df, trades_df, info_df, prices_df, holdings_df
     except Exception as e:
         st.error(f"❌ 数据源异常: {e}")
         st.stop()
 
-df, perf_metrics, perf_monthly, bias_df, trades_df, info_df, prices_df = load_all_data()
+df, perf_metrics, perf_monthly, bias_df, trades_df, info_df, prices_df, holdings_df = load_all_data()
 
 # ================= 3. 时间轴控制 =================
 min_d, max_d = df.index.min().date(), df.index.max().date()
@@ -72,13 +106,13 @@ default_start = max(pd.to_datetime("2024-02-08").date(), min_d)
 
 # --- 图一独立控件（放最上方）---
 st.sidebar.header("📈 图一：核心趋势")
-fig1_start = st.sidebar.date_input("图一起始日", value=min_d, key="fig1_start")
 fig1_base = st.sidebar.date_input(
-    "图一归一化基准日",
+    "基准日选择",
     value=default_start,
     key="fig1_base",
-    help="净值/指数从此日重新归一到 1.0，不影响顶部指标卡",
+    help="图表从此日起展示，净值/指数同时归一到 1.0",
 )
+fig1_start = fig1_base  # 起始日与基准日保持一致
 
 # --- 图二~六共用控件 ---
 st.sidebar.header("📊 图二~六：区间分析")
@@ -87,8 +121,8 @@ end_date = st.sidebar.date_input("结束日", value=max_d, key="main_end")
 
 # ================= 4. 预计算图一归一化（指标卡依赖此结果）=================
 # date_input 清空时返回 None，需用默认值兜底
-_fig1_start = pd.to_datetime(fig1_start) if fig1_start else pd.to_datetime(min_d)
-_fig1_base  = pd.to_datetime(fig1_base)  if fig1_base  else pd.to_datetime(default_start)
+_fig1_base  = pd.to_datetime(fig1_base) if fig1_base else pd.to_datetime(default_start)
+_fig1_start = _fig1_base  # 起始日与基准日保持一致
 _start_date = pd.to_datetime(start_date) if start_date else pd.to_datetime(default_start)
 _end_date   = pd.to_datetime(end_date)   if end_date   else pd.to_datetime(max_d)
 
@@ -113,6 +147,41 @@ if not _anchor.empty:
     _alpha = (_nav_n - _idx_n) * 100
 
 
+def _sector_bias_at(at_date, holdings_df, prices_df, info_df, bias_df):
+    """
+    按价格还原：用当前持仓持份数 × at_date 价格，计算该日期近似板块配置偏移。
+    index_weight 沿用 bias_df 中的基准权重。
+    """
+    avail = prices_df.index[prices_df.index <= at_date]
+    if len(avail) == 0:
+        return bias_df.copy()
+    target_date = avail.max()
+    prices_t = prices_df.loc[target_date]
+    prices_latest = prices_df.loc[prices_df.index.max()]
+
+    h = holdings_df.copy()
+    def _scale(row):
+        p_now = prices_latest.get(row["code"], np.nan)
+        p_then = prices_t.get(row["code"], np.nan)
+        if pd.notna(p_now) and p_now > 0 and pd.notna(p_then):
+            return row["market_value"] * (p_then / p_now)
+        return row["market_value"]
+
+    h["scaled_mv"] = h.apply(_scale, axis=1)
+    merged = pd.merge(h, info_df[["code", "sector"]], on="code", how="left")
+    total = merged["scaled_mv"].sum()
+    if total == 0:
+        return bias_df.copy()
+
+    sector_w = merged.groupby("sector")["scaled_mv"].sum() / total
+    idx_w = bias_df.set_index("sector")["index_weight"]
+    result = pd.DataFrame({"account_weight": sector_w}).reset_index()
+    result.columns = ["sector", "account_weight"]
+    result["index_weight"] = result["sector"].map(idx_w).fillna(0)
+    result["weight_bias"] = result["account_weight"] - result["index_weight"]
+    return result
+
+
 def _fmt_pct(v, decimals=2):
     return f"{v:.{decimals}f}%" if pd.notna(v) else "N/A"
 
@@ -133,7 +202,7 @@ def _calc_metrics(s):
 
 
 # ================= 5. 顶部指标卡（跟随图一日期动态计算）=================
-st.title("🛡️ REITs 投资策略全景看板")
+st.title("REITs二级策略跟踪")
 
 if _nav_n is not None and len(_nav_n) >= 2:
     nm = _calc_metrics(_nav_n)
@@ -156,59 +225,82 @@ else:
     st.info("请在侧边栏调整「图一归一化基准日」，使其在数据范围内")
 st.divider()
 
-# ================= 图一：核心趋势归因 =================
-st.subheader("一、核心趋势归因：REITs 二级策略")
+st.subheader("一、REITs二级策略跟踪")
 
 if not df_p1.empty and "nav_n" in df_p1.columns:
     alpha_pct = (df_p1["nav_n"] - df_p1["idx_n"]) * 100
 
-    fig1 = make_subplots(specs=[[{"secondary_y": True}]])
+    # go.Figure + yaxis2 overlaying：同一SVG层，trace顺序即z顺序
+    # 面积先加（y2，渲染在下） → 折线后加（y1，渲染在上）
+    fig1 = go.Figure()
     fig1.add_trace(
-        go.Scatter(x=df_p1.index, y=alpha_pct.clip(lower=0), name="正超额(%)",
-                   fill="tozeroy", fillcolor="rgba(214,39,40,0.25)", line_width=0,
-                   hovertemplate="%{y:.2f}%"),
-        secondary_y=True,
-    )
-    fig1.add_trace(
-        go.Scatter(x=df_p1.index, y=alpha_pct.clip(upper=0), name="负超额(%)",
-                   fill="tozeroy", fillcolor="rgba(44,160,44,0.25)", line_width=0,
-                   hovertemplate="%{y:.2f}%"),
-        secondary_y=True,
+        go.Scatter(x=df_p1.index, y=alpha_pct, name="超额(%)",
+                   fill="tozeroy", fillcolor=excess_fill,
+                   line=dict(color="rgba(0,0,0,0)", width=0),
+                   hovertemplate="%{y:.2f}%", yaxis="y2")
     )
     fig1.add_trace(
         go.Scatter(x=df_p1.index, y=df_p1["idx_n"], name="REITs指数",
-                   line=dict(color="#1f77b4", width=3.5), hovertemplate="%{y:.3f}"),
-        secondary_y=False,
+                   line=dict(color=idx_color, width=2.5),
+                   hovertemplate="%{y:.3f}")
     )
     fig1.add_trace(
         go.Scatter(x=df_p1.index, y=df_p1["nav_n"], name="账户净值",
-                   line=dict(color="#d62728", width=3.5), hovertemplate="%{y:.3f}"),
-        secondary_y=False,
+                   line=dict(color=nav_color, width=3.5),
+                   hovertemplate="%{y:.3f}")
     )
     fig1.update_layout(
         template=template, height=chart_height, hovermode="x unified",
-        margin=dict(l=0, r=0, t=20, b=50),
-        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5),
-        xaxis=dict(range=[df_p1.index.min(), df_p1.index.max()], autorange=False),
-    )
-    all_vals = pd.concat([df_p1["nav_n"], df_p1["idx_n"]]).dropna()
-    pad = (all_vals.max() - all_vals.min()) * 0.05 or 0.01
-    fig1.update_yaxes(
-        title_text="归一化净值 / 指数", showgrid=True, gridcolor=grid_color,
-        secondary_y=False,
-        range=[all_vals.min() - pad, all_vals.max() + pad],
-    )
-    max_a = alpha_pct.abs().max() or 1
-    fig1.update_yaxes(
-        title_text="区间超额 (%)", range=[-max_a * 3.5, max_a * 3.5],
-        showgrid=False, secondary_y=True,
+        margin=dict(l=10, r=60, t=30, b=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5,
+                    font=_font9),
+        uirevision=str(_fig1_base),
+        xaxis=dict(tickfont=_font9),
+        yaxis=dict(title="归一化净值 / 指数", showgrid=True, gridcolor=grid_color,
+                   tickfont=_font9, title_font=_font9),
+        yaxis2=dict(title="区间超额 (%)", overlaying="y", side="right", showgrid=False,
+                    zeroline=False, tickfont=_font9, title_font=_font9),
     )
     st.plotly_chart(fig1, width='stretch')
 else:
     st.info("所选区间内无有效净值/指数数据")
 
-# ================= 图二：调仓意图扫描仪 =================
-st.subheader("二、主动操作复盘：调仓意图扫描仪 (ppt)")
+# ================= 月度收益（紧跟净值图，同起点）=================
+st.markdown("<div style='margin-top:2.5rem'></div>", unsafe_allow_html=True)
+st.subheader("二、时间归因分析：分月收益对比")
+
+if perf_monthly is not None and not perf_monthly.empty:
+    base_month_str = _fig1_base.strftime("%Y-%m")
+    pm = perf_monthly[~perf_monthly["period"].str.contains("至今", na=False)].copy()
+    pm = pm[pm["period"] >= base_month_str]
+    if not pm.empty:
+        fig_m = go.Figure()
+        fig_m.add_trace(
+            go.Bar(x=pm["period"], y=pm["nav_return"], name="账户收益 (%)",
+                   marker_color=nav_color,
+                   text=pm["nav_return"].round(2).astype(str) + "%", textposition="outside")
+        )
+        fig_m.add_trace(
+            go.Bar(x=pm["period"], y=pm["idx_return"], name="指数收益 (%)",
+                   marker_color=idx_color,
+                   text=pm["idx_return"].round(2).astype(str) + "%", textposition="outside")
+        )
+        fig_m.update_layout(
+            template=template, height=chart_height, barmode="group",
+            margin=dict(l=10, r=60, t=30, b=60),
+            legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5,
+                        font=_font9),
+            yaxis=dict(title="收益率 (%)", tickfont=_font9, title_font=_font9),
+            xaxis=dict(tickfont=_font9),
+            uirevision=str(_fig1_base),
+        )
+        st.plotly_chart(fig_m, width='stretch')
+    else:
+        st.info("基准日之后暂无完整月度数据")
+
+# ================= 图三：调仓意图扫描仪 =================
+st.markdown("<div style='margin-top:2.5rem'></div>", unsafe_allow_html=True)
+st.subheader("三、主动操作复盘：调仓意图扫描仪 (ppt)")
 
 if not df_p.empty:
     fig2 = make_subplots(specs=[[{"secondary_y": True}]])
@@ -220,114 +312,128 @@ if not df_p.empty:
     p_chg = df_p["仓位变动"].fillna(0) * 100
     fig2.add_trace(
         go.Bar(x=df_p.index, y=p_chg, name="调仓ppt",
-               marker_color=["#d62728" if v > 0 else "#1f77b4" for v in p_chg]),
+               marker_color=[nav_color if v > 0 else bull_color for v in p_chg]),
         secondary_y=True,
     )
-    # 左轴（指数）手动 range，防止 Plotly 双轴时互相压缩
-    idx_vals = df_p["指数绝对值"].dropna()
-    idx_pad = (idx_vals.max() - idx_vals.min()) * 0.05 or 1
     fig2.update_yaxes(
-        range=[idx_vals.min() - idx_pad, idx_vals.max() + idx_pad],
         title_text="指数", showgrid=True, gridcolor=grid_color, secondary_y=False,
+        tickfont=_font9, title_font=_font9,
     )
-    # 右轴用 95 分位数定高度，避免单个大变动把所有小柱压扁
-    nz = p_chg[p_chg != 0].abs()
-    mx_chg = float(np.percentile(nz, 95)) * 1.5 if len(nz) >= 5 else (nz.max() or 1)
     fig2.update_yaxes(
-        range=[-mx_chg * 1.5, mx_chg * 1.5], title_text="仓位变动 (ppt)",
-        secondary_y=True, showgrid=False,
+        title_text="仓位变动 (ppt)", secondary_y=True, showgrid=False,
+        tickfont=_font9, title_font=_font9,
     )
+    fig2.update_xaxes(tickfont=_font9)
     fig2.update_layout(
-        template=template, height=chart_height, margin=dict(l=0, r=0, t=20, b=50),
-        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5),
+        template=template, height=chart_height, margin=dict(l=10, r=60, t=30, b=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5,
+                    font=_font9),
+        uirevision=f"{_start_date}_{_end_date}",
     )
     st.plotly_chart(fig2, width='stretch')
 
-# ================= 图三：实际仓位水位 =================
-st.subheader("三、持仓状态监控：实际仓位水位 (%)")
+# ================= 图四：实际仓位水位 =================
+st.markdown("<div style='margin-top:2.5rem'></div>", unsafe_allow_html=True)
+st.subheader("四、持仓状态监控：实际仓位水位 (%)")
 
 if not df_p.empty:
     fig3 = make_subplots(specs=[[{"secondary_y": True}]])
     p_lvl = df_p["仓位"].fillna(0) * 100
+    p_base = max(0.0, float(p_lvl.min()) - 5)
     fig3.add_trace(
         go.Scatter(x=df_p.index, y=df_p["指数绝对值"], name="指数",
-                   line=dict(color=text_color, width=2)),
+                   line=dict(color=text_color, width=2.5)),
         secondary_y=False,
     )
+    # 隐形基线，与 tonexty 搭配实现贴近数据的填充（不从 0 开始）
     fig3.add_trace(
-        go.Scatter(x=df_p.index, y=p_lvl, fill="tozeroy", name="仓位水位",
-                   line=dict(color="#5DADE2", width=2), fillcolor="rgba(93,173,226,0.2)"),
+        go.Scatter(x=df_p.index, y=[p_base] * len(df_p), showlegend=False,
+                   line=dict(color="rgba(0,0,0,0)", width=0)),
         secondary_y=True,
     )
-    # 左轴（指数）手动 range
-    idx_vals3 = df_p["指数绝对值"].dropna()
-    idx_pad3 = (idx_vals3.max() - idx_vals3.min()) * 0.05 or 1
+    fig3.add_trace(
+        go.Scatter(x=df_p.index, y=p_lvl, fill="tonexty", name="仓位水位",
+                   line=dict(color=pos_line, width=2),
+                   fillcolor=pos_fill),
+        secondary_y=True,
+    )
     fig3.update_yaxes(
-        range=[idx_vals3.min() - idx_pad3, idx_vals3.max() + idx_pad3],
         title_text="指数", showgrid=True, gridcolor=grid_color, secondary_y=False,
+        tickfont=_font9, title_font=_font9,
     )
-    y_min = max(0, p_lvl.min() - 5)
-    y_max = p_lvl.max() + 5 if p_lvl.max() > 0 else 110
     fig3.update_yaxes(
-        range=[y_min, y_max], title_text="仓位水位 (%)",
-        secondary_y=True, showgrid=False,
+        title_text="仓位水位 (%)", secondary_y=True, showgrid=False,
+        range=[p_base, float(p_lvl.max()) + 3],
+        tickfont=_font9, title_font=_font9,
     )
+    fig3.update_xaxes(tickfont=_font9)
     fig3.update_layout(
-        template=template, height=chart_height, margin=dict(l=0, r=0, t=20, b=50),
-        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5),
+        template=template, height=chart_height, margin=dict(l=10, r=60, t=30, b=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5,
+                    font=_font9),
+        uirevision=f"{_start_date}_{_end_date}",
     )
     st.plotly_chart(fig3, width='stretch')
 
-# ================= 图四：板块配置偏移 =================
-st.subheader("四、结构暴露检查：最新板块配置偏移 (ppt)")
+# ================= 图五：板块配置偏移（期初 vs 期末双图）=================
+st.markdown("<div style='margin-top:2.5rem'></div>", unsafe_allow_html=True)
+st.subheader("五、结构暴露检查：板块配置偏移 (ppt)")
 
 if not bias_df.empty:
-    b_s = bias_df.sort_values("weight_bias")
-    fig4 = go.Figure(
-        go.Bar(
-            x=b_s["weight_bias"] * 100,
-            y=b_s["sector"],
-            orientation="h",
-            marker_color=["#2ca02c" if v < 0 else "#d62728" for v in b_s["weight_bias"]],
-            text=(b_s["weight_bias"] * 100).round(1).astype(str) + " ppt",
-            textposition="outside",
-        )
-    )
-    fig4.add_vline(x=0, line_color=text_color, line_width=2)
-    fig4.update_layout(
-        template=template, height=chart_height,
-        xaxis_title="偏移百分点 (ppt)", yaxis_title="板块",
-        margin=dict(l=0, r=80, t=20, b=20),
-        showlegend=False,
-    )
-    st.plotly_chart(fig4, width='stretch')
+    # 计算期初/期末截面
+    bias_start = _sector_bias_at(_start_date, holdings_df, prices_df, info_df, bias_df)
+    bias_end   = bias_df.copy()  # 最新持仓即期末截面
 
-# ================= 图五：分月收益对比 =================
-st.subheader("五、时间归因分析：分月收益对比")
+    # 统一排序（按期末偏移）
+    sector_order = bias_end.sort_values("weight_bias")["sector"].tolist()
+    bias_start = bias_start.set_index("sector").reindex(sector_order).reset_index()
+    bias_end   = bias_end.set_index("sector").reindex(sector_order).reset_index()
 
-if perf_monthly is not None and not perf_monthly.empty:
-    # nav_return 已是百分比值（e.g. 4.807 = 4.807%），不需要再 *100
-    pm = perf_monthly[~perf_monthly["period"].str.contains("至今", na=False)].copy()
-    if not pm.empty:
-        fig5 = go.Figure()
-        fig5.add_trace(
-            go.Bar(x=pm["period"], y=pm["nav_return"], name="账户收益 (%)",
-                   marker_color="#d62728",
-                   text=pm["nav_return"].round(2).astype(str) + "%", textposition="outside")
+    # 统一坐标轴范围
+    max_abs = max(
+        bias_start["weight_bias"].abs().max(),
+        bias_end["weight_bias"].abs().max(),
+    ) * 100 * 1.25
+    max_abs = max(max_abs, 1)
+
+    def _bias_bar(b_df, title_label):
+        fig = go.Figure(
+            go.Bar(
+                x=b_df["weight_bias"] * 100,
+                y=b_df["sector"],
+                orientation="h",
+                marker_color=[bull_color if v < 0 else bear_color for v in b_df["weight_bias"]],
+                text=(b_df["weight_bias"] * 100).round(1).astype(str) + " ppt",
+                textposition="outside",
+            )
         )
-        fig5.add_trace(
-            go.Bar(x=pm["period"], y=pm["idx_return"], name="指数收益 (%)",
-                   marker_color="#1f77b4",
-                   text=pm["idx_return"].round(2).astype(str) + "%", textposition="outside")
+        fig.add_vline(x=0, line_color=text_color, line_width=2)
+        fig.update_layout(
+            template=template, height=chart_height,
+            title=dict(text=title_label, x=0.5, font=dict(size=13, color=text_color)),
+            xaxis=dict(title="偏移百分点 (ppt)", range=[-max_abs, max_abs],
+                       tickfont=_font9, title_font=_font9),
+            yaxis=dict(title="板块", tickfont=_font9, title_font=_font9),
+            margin=dict(l=10, r=110, t=40, b=20),
+            showlegend=False,
+            uirevision=f"{_start_date}_{_end_date}_{title_label}",
         )
-        fig5.update_layout(
-            template=template, height=chart_height, barmode="group",
-            yaxis_title="收益率 (%)", margin=dict(l=0, r=0, t=20, b=50),
-            legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5),
+        return fig
+
+    col_l, col_r = st.columns(2)
+    with col_l:
+        st.plotly_chart(
+            _bias_bar(bias_start, f"期初截面 ({_start_date.date()})"),
+            width='stretch'
         )
-        st.plotly_chart(fig5, width='stretch')
+    with col_r:
+        st.plotly_chart(
+            _bias_bar(bias_end, f"期末截面 ({_end_date.date()})"),
+            width='stretch'
+        )
 
 # ================= 图六：板块操作归因气泡图 =================
+st.markdown("<div style='margin-top:2.5rem'></div>", unsafe_allow_html=True)
 st.subheader("六、战术得失诊断：板块操作归因气泡图")
 
 if not trades_df.empty and not prices_df.empty:
@@ -360,16 +466,20 @@ if not trades_df.empty and not prices_df.empty:
         if not pdf.empty:
             mx = (pdf["ret"].abs().max() or 1) * 1.3
             my = (pdf["net"].abs().max() or 1) * 1.3
-            font_ann = dict(size=13, color=text_color)
+            font_ann = _font9
+
+            sectors_list = pdf.index.tolist()
+            marker_colors = [_bubble_palette[i % len(_bubble_palette)] for i in range(len(sectors_list))]
 
             fig6 = go.Figure(
                 go.Scatter(
                     x=pdf["ret"], y=pdf["net"],
-                    mode="markers+text", text=pdf.index, textposition="top center",
+                    mode="markers+text", text=sectors_list, textposition="top center",
+                    textfont=_font9,
                     marker=dict(
                         size=np.sqrt(pdf["vol"].clip(lower=0)) * 0.6 + 6,
-                        color=pdf["ret"], colorscale="RdYlGn_r",
-                        line_width=1.5, showscale=False,
+                        color=marker_colors,
+                        line_color="rgba(255,255,255,0.6)", line_width=1.5,
                     ),
                     hovertemplate="<b>%{text}</b><br>涨跌幅: %{x:.2f}%<br>净买入: %{y:.1f}万<extra></extra>",
                 )
@@ -386,10 +496,13 @@ if not trades_df.empty and not prices_df.empty:
                                  showarrow=False, font=font_ann, opacity=0.55)
             fig6.update_layout(
                 template=template, height=chart_height + 100,
-                xaxis_range=[-mx, mx], yaxis_range=[-my, my],
-                xaxis_title="区间涨跌幅 (%)", yaxis_title="区间净买入 (万元)",
-                margin=dict(l=0, r=0, t=20, b=20),
+                xaxis=dict(range=[-mx, mx], title="区间涨跌幅 (%)",
+                           tickfont=_font9, title_font=_font9),
+                yaxis=dict(range=[-my, my], title="区间净买入 (万元)",
+                           tickfont=_font9, title_font=_font9),
+                margin=dict(l=10, r=60, t=30, b=30),
                 showlegend=False,
+                uirevision=f"{_start_date}_{_end_date}",
             )
             st.plotly_chart(fig6, width='stretch')
         else:
