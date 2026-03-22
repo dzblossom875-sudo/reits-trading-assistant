@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<!-- saved from url=(0063)file:///C:/Users/lenovo/Downloads/cc-prompts-cloud-pinga_1.html -->
+<html lang="zh"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CC 配色提示词 · Cloud Blue &amp; Ping An</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Mono',monospace,system-ui;background:#f2f6fb;color:#0a1428;padding:2rem;line-height:1.6}
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+
+h1{font-size:11px;color:#7a9ac0;letter-spacing:.18em;text-transform:uppercase;margin-bottom:2.5rem;padding-bottom:.75rem;border-bottom:1px solid #cddaee}
+
+/* cards */
+.card{background:#fff;border:1px solid #cddaee;border-radius:10px;padding:24px 28px;margin-bottom:2rem;box-shadow:0 1px 4px rgba(26,74,128,.06)}
+.card-pa{background:#fff;border:1px solid #FFD4B8;border-radius:10px;padding:24px 28px;margin-bottom:2rem;box-shadow:0 1px 4px rgba(240,78,35,.06)}
+
+.theme-label{font-size:9px;letter-spacing:.15em;text-transform:uppercase;margin-bottom:6px}
+.theme-label.blue{color:#7a9ac0}
+.theme-label.pa{color:#c84800}
+.theme-title{font-size:16px;font-weight:500;margin-bottom:18px}
+.theme-title.blue{color:#1a4a80}
+.theme-title.pa{color:#F04E23}
+
+/* swatches */
+.swatches{display:flex;gap:5px;margin-bottom:20px}
+.sw{display:flex;flex-direction:column;align-items:center;gap:4px}
+.sw-dot{width:36px;height:36px;border-radius:6px;border:1px solid rgba(0,0,0,.06)}
+.sw-hex{font-size:8px;color:#aaa;letter-spacing:.04em}
+.sw-name{font-size:7px;color:#bbb;letter-spacing:.03em;text-align:center}
+
+/* section label */
+.section{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#aaa;margin:18px 0 8px;display:flex;align-items:center;gap:8px}
+.section::after{content:'';flex:1;height:1px;background:#eee}
+
+/* code block */
+.code{background:#f8fafb;border:1px solid #e0e8f4;border-radius:6px;padding:14px 18px;font-size:11px;line-height:1.9;color:#5a7aa0;position:relative;white-space:pre;overflow-x:auto}
+.code-pa{background:#fffaf8;border:1px solid #ffe4d4;border-radius:6px;padding:14px 18px;font-size:11px;line-height:1.9;color:#a07060;position:relative;white-space:pre;overflow-x:auto}
+.k{color:#9ab0cc}.v{color:#1a4a80}.val{color:#1a7050}.c{color:#c8d8e8}
+.kp{color:#d4a080}.vp{color:#c84800}.valp{color:#007D5E}.cp{color:#f0d0c0}
+
+/* copy button */
+.cb{position:absolute;top:10px;right:10px;background:#fff;border:1px solid #ddd;color:#aaa;font-family:'DM Mono',monospace;font-size:9px;padding:3px 10px;border-radius:3px;cursor:pointer;transition:all .15s;letter-spacing:.06em}
+.cb:hover{background:#f0f0f0;color:#555}
+.cb.ok{color:#1a7050;border-color:#aad4b8}
+.cb-pa{background:#fff;border:1px solid #ffd4b8;color:#d4a080}
+.cb-pa:hover{background:#fff8f4;color:#c84800}
+.cb-pa.ok{color:#007D5E;border-color:#b0e0d0}
+
+/* prompt block */
+.prompt{background:#f0f5ff;border-left:3px solid #1a4a80;border-radius:0 6px 6px 0;padding:12px 16px;font-size:11.5px;line-height:1.8;color:#1a2a40;position:relative;white-space:pre-wrap}
+.prompt-pa{background:#fff8f4;border-left:3px solid #F04E23;border-radius:0 6px 6px 0;padding:12px 16px;font-size:11.5px;line-height:1.8;color:#2a1408;position:relative;white-space:pre-wrap}
+
+hr{border:none;border-top:1px solid #e0e8f4;margin:2.5rem 0}
+</style>
+</head>
+<body>
+
+<h1>CC 配色提示词 · Cloud Blue &amp; Ping An · 直接复制喂给 Claude Code</h1>
+
+<!-- ══════════════════════
+  CLOUD BLUE
+══════════════════════════ -->
+<div class="card">
+  <div class="theme-label blue">Theme 08</div>
+  <div class="theme-title blue">Cloud Blue · 量化平台 / 数据仪表盘</div>
+
+  <!-- swatches -->
+  <div class="swatches">
+    <div class="sw"><div class="sw-dot" style="background:#f2f6fb;border-color:#cddaee"></div><div class="sw-hex">#f2f6fb</div><div class="sw-name">bg</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#ffffff;border-color:#cddaee"></div><div class="sw-hex">#ffffff</div><div class="sw-name">surface</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#e4edf8"></div><div class="sw-hex">#e4edf8</div><div class="sw-name">surf-2</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#cddaee"></div><div class="sw-hex">#cddaee</div><div class="sw-name">border</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#1a4a80"></div><div class="sw-hex">#1a4a80</div><div class="sw-name">s1 navy</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#d44000"></div><div class="sw-hex">#d44000</div><div class="sw-name">s2 tangerine</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#00806a"></div><div class="sw-hex">#00806a</div><div class="sw-name">s3 emerald</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#7040a0"></div><div class="sw-hex">#7040a0</div><div class="sw-name">s4 violet</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#c08800"></div><div class="sw-hex">#c08800</div><div class="sw-name">s5 gold</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#006080"></div><div class="sw-hex">#006080</div><div class="sw-name">s6 teal</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#0a1428"></div><div class="sw-hex">#0a1428</div><div class="sw-name">text</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#5a7aa0"></div><div class="sw-hex">#5a7aa0</div><div class="sw-name">muted</div></div>
+  </div>
+
+  <!-- CSS variables -->
+  <div class="section">CSS 变量 · 粘贴进 &lt;style&gt;</div>
+  <div class="code" id="css-blue">
+    <button class="cb" onclick="cp(&#39;css-blue&#39;,this)">COPY</button><span class="c">/* Cloud Blue · Theme 08 */</span>
+<span class="k">:root</span> {
+  <span class="v">--bg</span>:         <span class="val">#f2f6fb</span>;
+  <span class="v">--surface</span>:    <span class="val">#ffffff</span>;
+  <span class="v">--surface-2</span>:  <span class="val">#e4edf8</span>;
+  <span class="v">--border</span>:     <span class="val">#cddaee</span>;
+
+  <span class="v">--s1</span>:         <span class="val">#1a4a80</span>;  <span class="c">/* navy        主系列 */</span>
+  <span class="v">--s2</span>:         <span class="val">#d44000</span>;  <span class="c">/* tangerine   次系列 */</span>
+  <span class="v">--s3</span>:         <span class="val">#00806a</span>;  <span class="c">/* emerald     三系列 */</span>
+  <span class="v">--s4</span>:         <span class="val">#7040a0</span>;  <span class="c">/* violet      四系列 */</span>
+  <span class="v">--s5</span>:         <span class="val">#c08800</span>;  <span class="c">/* gold        五系列 */</span>
+  <span class="v">--s6</span>:         <span class="val">#006080</span>;  <span class="c">/* deep teal   六系列 */</span>
+
+  <span class="v">--s1-fill</span>:    <span class="val">rgba(26,74,128,0.08)</span>;
+  <span class="v">--s2-fill</span>:    <span class="val">rgba(212,64,0,0.08)</span>;
+  <span class="v">--s3-fill</span>:    <span class="val">rgba(0,128,106,0.08)</span>;
+
+  <span class="v">--bull</span>:       <span class="val">#00806a</span>;
+  <span class="v">--bull-bg</span>:    <span class="val">#e0f4f0</span>;
+  <span class="v">--bear</span>:       <span class="val">#d44000</span>;
+  <span class="v">--bear-bg</span>:    <span class="val">#faeee6</span>;
+
+  <span class="v">--text</span>:       <span class="val">#0a1428</span>;
+  <span class="v">--text-muted</span>: <span class="val">#5a7aa0</span>;
+  <span class="v">--text-dim</span>:   <span class="val">#9ab0cc</span>;
+
+  <span class="v">--grid</span>:       <span class="val">rgba(26,74,128,0.05)</span>;
+  <span class="v">--grid-major</span>: <span class="val">rgba(26,74,128,0.10)</span>;
+  <span class="v">--axis</span>:       <span class="val">#cddaee</span>;
+}</div>
+
+  <!-- prompt -->
+  <div class="section">提示词 · 直接喂给 CC</div>
+  <div class="prompt" id="prompt-blue">
+    <button class="cb" onclick="cp(&#39;prompt-blue&#39;,this)">COPY</button>请使用以下 CSS 变量配色方案（Cloud Blue）绘制图表，配色粘贴进 HTML &lt;style&gt; 中：
+
+:root {
+  --bg:#f2f6fb; --surface:#ffffff; --surface-2:#e4edf8; --border:#cddaee;
+  --s1:#1a4a80; --s2:#d44000; --s3:#00806a; --s4:#7040a0; --s5:#c08800; --s6:#006080;
+  --s1-fill:rgba(26,74,128,0.08); --s2-fill:rgba(212,64,0,0.08); --s3-fill:rgba(0,128,106,0.08);
+  --bull:#00806a; --bull-bg:#e0f4f0; --bear:#d44000; --bear-bg:#faeee6;
+  --text:#0a1428; --text-muted:#5a7aa0; --text-dim:#9ab0cc;
+  --grid:rgba(26,74,128,0.05); --grid-major:rgba(26,74,128,0.10); --axis:#cddaee;
+}
+
+图表要求：
+- 背景色 var(--bg)，卡片白底 var(--surface)，边框 var(--border)
+- 折线/柱颜色依次用 var(--s1) var(--s2) var(--s3)，面积填充用对应 --s*-fill
+- 网格线用 var(--grid-major)，轴刻度文字用 var(--text-muted)
+- 正值/上涨标签：background var(--bull-bg)，color var(--bull)
+- 负值/下跌标签：background var(--bear-bg)，color var(--bear)
+- Chart.js 示例写法：borderColor:'#1a4a80', backgroundColor:'rgba(26,74,128,0.08)'
+
+[在此替换你的具体图表需求，例如：
+"双折线图，x轴月份2025.01-2026.03，s1=沪深300，s2=标普500"]</div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════
+  PING AN
+══════════════════════════ -->
+<div class="card-pa">
+  <div class="theme-label pa">Theme PA</div>
+  <div class="theme-title pa">平安集团 · Ping An Group</div>
+
+  <!-- swatches -->
+  <div class="swatches">
+    <div class="sw"><div class="sw-dot" style="background:#F8F6F4;border-color:#e8e4e0"></div><div class="sw-hex">#F8F6F4</div><div class="sw-name">bg</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#ffffff;border-color:#ffe4d4"></div><div class="sw-hex">#ffffff</div><div class="sw-name">surface</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#F04E23"></div><div class="sw-hex">#F04E23</div><div class="sw-name">平安橙</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#FF7848"></div><div class="sw-hex">#FF7848</div><div class="sw-name">浅橙</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#C83800"></div><div class="sw-hex">#C83800</div><div class="sw-name">深橙</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#FFF0EA;border-color:#ffd4b8"></div><div class="sw-hex">#FFF0EA</div><div class="sw-name">橙底</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#007D5E"></div><div class="sw-hex">#007D5E</div><div class="sw-name">平安绿</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#00A87C"></div><div class="sw-hex">#00A87C</div><div class="sw-name">浅绿</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#E8F6F1;border-color:#b0e0d0"></div><div class="sw-hex">#E8F6F1</div><div class="sw-name">绿底</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#1A1A1A"></div><div class="sw-hex">#1A1A1A</div><div class="sw-name">text</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#7A7A7A"></div><div class="sw-hex">#7A7A7A</div><div class="sw-name">muted</div></div>
+    <div class="sw"><div class="sw-dot" style="background:#E8E4E0"></div><div class="sw-hex">#E8E4E0</div><div class="sw-name">border</div></div>
+  </div>
+
+  <!-- CSS variables -->
+  <div class="section">CSS 变量 · 粘贴进 &lt;style&gt;</div>
+  <div class="code-pa" id="css-pa">
+    <button class="cb cb-pa" onclick="cp(&#39;css-pa&#39;,this)">COPY</button><span class="cp">/* 平安集团 · Ping An Group · 官方品牌配色 */</span>
+<span class="kp">:root</span> {
+  <span class="vp">--bg</span>:              <span class="valp">#F8F6F4</span>;
+  <span class="vp">--surface</span>:         <span class="valp">#FFFFFF</span>;
+  <span class="vp">--surface-2</span>:       <span class="valp">#F2EFEB</span>;
+  <span class="vp">--border</span>:          <span class="valp">#E8E4E0</span>;
+
+  <span class="cp">/* 平安橙  Pantone 173C */</span>
+  <span class="vp">--pa-orange</span>:       <span class="valp">#F04E23</span>;
+  <span class="vp">--pa-orange-lt</span>:    <span class="valp">#FF7848</span>;
+  <span class="vp">--pa-orange-dk</span>:    <span class="valp">#C83800</span>;
+  <span class="vp">--pa-orange-bg</span>:    <span class="valp">#FFF0EA</span>;
+  <span class="vp">--pa-orange-bd</span>:    <span class="valp">#FFD4B8</span>;
+
+  <span class="cp">/* 平安绿  Pantone 3415C */</span>
+  <span class="vp">--pa-green</span>:        <span class="valp">#007D5E</span>;
+  <span class="vp">--pa-green-lt</span>:     <span class="valp">#00A87C</span>;
+  <span class="vp">--pa-green-bg</span>:     <span class="valp">#E8F6F1</span>;
+  <span class="vp">--pa-green-bd</span>:     <span class="valp">#B0E0D0</span>;
+
+  <span class="cp">/* 数据系列 */</span>
+  <span class="vp">--s1</span>:              <span class="valp">#F04E23</span>;  <span class="cp">/* 平安橙 主系列 */</span>
+  <span class="vp">--s2</span>:              <span class="valp">#007D5E</span>;  <span class="cp">/* 平安绿 次系列 */</span>
+  <span class="vp">--s3</span>:              <span class="valp">#FF7848</span>;  <span class="cp">/* 浅橙   三系列 */</span>
+  <span class="vp">--s4</span>:              <span class="valp">#00A87C</span>;  <span class="cp">/* 浅绿   四系列 */</span>
+  <span class="vp">--s5</span>:              <span class="valp">#5A5A5A</span>;  <span class="cp">/* 中性灰 */</span>
+
+  <span class="vp">--s1-fill</span>:         <span class="valp">rgba(240,78,35,0.10)</span>;
+  <span class="vp">--s2-fill</span>:         <span class="valp">rgba(0,125,94,0.10)</span>;
+
+  <span class="cp">/* 上涨/正值 = 绿  下跌/负值 = 深橙红 */</span>
+  <span class="vp">--bull</span>:            <span class="valp">#007D5E</span>;
+  <span class="vp">--bull-bg</span>:         <span class="valp">#E8F6F1</span>;
+  <span class="vp">--bear</span>:            <span class="valp">#C83800</span>;
+  <span class="vp">--bear-bg</span>:         <span class="valp">#FFF0EA</span>;
+
+  <span class="vp">--text</span>:            <span class="valp">#1A1A1A</span>;
+  <span class="vp">--text-muted</span>:      <span class="valp">#7A7A7A</span>;
+  <span class="vp">--text-dim</span>:        <span class="valp">#B0B0B0</span>;
+
+  <span class="vp">--grid</span>:            <span class="valp">rgba(0,0,0,0.04)</span>;
+  <span class="vp">--grid-major</span>:      <span class="valp">rgba(0,0,0,0.08)</span>;
+  <span class="vp">--axis</span>:            <span class="valp">#E0DDD8</span>;
+
+  <span class="cp">/* 反色（白字在橙/绿底上） */</span>
+  <span class="vp">--on-brand</span>:        <span class="valp">#FFFFFF</span>;
+}</div>
+
+  <!-- prompt -->
+  <div class="section">提示词 · 直接喂给 CC</div>
+  <div class="prompt-pa" id="prompt-pa">
+    <button class="cb cb-pa" onclick="cp(&#39;prompt-pa&#39;,this)">COPY</button>请使用以下 CSS 变量配色方案（平安集团官方品牌色）绘制图表，配色粘贴进 HTML &lt;style&gt; 中：
+
+:root {
+  --bg:#F8F6F4; --surface:#FFFFFF; --surface-2:#F2EFEB; --border:#E8E4E0;
+  --pa-orange:#F04E23; --pa-orange-lt:#FF7848; --pa-orange-dk:#C83800;
+  --pa-orange-bg:#FFF0EA; --pa-orange-bd:#FFD4B8;
+  --pa-green:#007D5E; --pa-green-lt:#00A87C;
+  --pa-green-bg:#E8F6F1; --pa-green-bd:#B0E0D0;
+  --s1:#F04E23; --s2:#007D5E; --s3:#FF7848; --s4:#00A87C; --s5:#5A5A5A;
+  --s1-fill:rgba(240,78,35,0.10); --s2-fill:rgba(0,125,94,0.10);
+  --bull:#007D5E; --bull-bg:#E8F6F1; --bear:#C83800; --bear-bg:#FFF0EA;
+  --text:#1A1A1A; --text-muted:#7A7A7A; --text-dim:#B0B0B0;
+  --grid:rgba(0,0,0,0.04); --grid-major:rgba(0,0,0,0.08); --axis:#E0DDD8;
+  --on-brand:#FFFFFF;
+}
+
+配色使用规则：
+- 报告页眉/封面色块：background var(--pa-orange)，文字 var(--on-brand) 白色
+- 主要 KPI 数字：color var(--pa-orange)
+- 次要 KPI / 正增长数字：color var(--pa-green)
+- 正收益/上涨标签：background var(--bull-bg)，color var(--bull)
+- 负收益/下跌标签：background var(--bear-bg)，color var(--bear)
+- 折线/柱主系列：var(--s1) 橙，面积填充 var(--s1-fill)
+- 折线/柱次系列：var(--s2) 绿，面积填充 var(--s2-fill)
+- 网格线 var(--grid-major)，轴刻度文字 var(--text-muted)
+- Chart.js 写法：borderColor:'#F04E23', backgroundColor:'rgba(240,78,35,0.10)'
+
+[在此替换你的具体图表需求，例如：
+"绘制平安集团2022-2025年净利润柱状图，主色用平安橙，
+ YoY增速折线用平安绿，页眉加平安橙色块标题"]</div>
+</div>
+
+<script>
+function cp(id, btn) {
+  const el = document.getElementById(id);
+  const text = el.innerText.replace(/^COPY\n?/, '');
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'COPIED';
+    btn.classList.add('ok');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('ok'); }, 2000);
+  });
+}
+</script>
+
+
+</body></html>
