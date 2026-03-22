@@ -740,8 +740,9 @@ def align_and_save():
     # 加载 REITs 基础信息
     reits_info = load_reits_info()
     
-    # 加载指数数据
-    index_df = load_index()
+    # 加载指数数据（带Wind增量缓存）
+    from src.wind_data_loader import load_index_with_cache
+    index_df = load_index_with_cache()
     
     # 加载净值数据
     nav_df = load_nav_from_daily_report()

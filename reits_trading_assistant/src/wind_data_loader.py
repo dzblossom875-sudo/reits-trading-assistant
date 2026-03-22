@@ -131,36 +131,126 @@ def get_sector_index_from_wind(sector_mapping: dict, start_date: str, end_date: 
     return pd.DataFrame(result_dict)
 
 
+_INDEX_CACHE_PATH = os.path.join(config.DATA_PROCESSED_DIR, "index_cache.csv")
+
+# 指数Wind代码映射
+_INDEX_WIND_CODES = {
+    "reits_index": "932047.CSI",
+    "tb10y":       "TB10Y.WI",
+    "hs300":       "000300.SH",
+    "csi_dividend":"000922.CSI",
+}
+
+# 2026年起的数据强制从Wind取，不依赖Excel
+_WIND_START_YEAR = "2026-01-01"
+
+
+def _fetch_index_from_wind(start_date: str, end_date: str) -> pd.DataFrame:
+    """
+    从Wind批量拉取所有指数，返回 DataFrame(index=date, columns=字段名)。
+    失败的指数列跳过，不中断整体。
+    """
+    w = get_wind_api()
+    if w is None:
+        return None
+    frames = {}
+    for col, code in _INDEX_WIND_CODES.items():
+        try:
+            result = w.wsd(code, "close", start_date, end_date, "")
+            if result.ErrorCode != 0 or not result.Data:
+                print(f"  Wind拉取 {code}({col}) 失败: ErrorCode={result.ErrorCode}")
+                continue
+            s = pd.Series(result.Data[0], index=pd.to_datetime(result.Times), name=col)
+            frames[col] = s
+        except Exception as e:
+            print(f"  Wind拉取 {code}({col}) 异常: {e}")
+    if not frames:
+        return None
+    return pd.DataFrame(frames).sort_index()
+
+
+def _load_index_cache() -> pd.DataFrame:
+    if not os.path.exists(_INDEX_CACHE_PATH):
+        return None
+    try:
+        df = pd.read_csv(_INDEX_CACHE_PATH, index_col=0, parse_dates=True, encoding="utf-8-sig")
+        df.index = pd.to_datetime(df.index)
+        return df.sort_index()
+    except Exception as e:
+        print(f"  读取指数缓存失败: {e}")
+        return None
+
+
+def _save_index_cache(df: pd.DataFrame):
+    try:
+        df.sort_index().to_csv(_INDEX_CACHE_PATH, encoding="utf-8-sig")
+    except Exception as e:
+        print(f"  保存指数缓存失败: {e}")
+
+
+def load_index_with_cache() -> pd.DataFrame:
+    """
+    加载指数数据，带增量缓存逻辑：
+    - 首次运行：2026-01-01 之前用 Excel，之后用 Wind API，合并保存缓存
+    - 后续运行：读缓存 → 增量拉取 (cache_max+1 ~ today) → 合并保存
+    - Wind 失败：回退至现有缓存或纯 Excel
+    返回 DataFrame(index.name='date', columns=[reits_index, tb10y, hs300, csi_dividend])
+    """
+    from src.data_loader import load_index as _load_excel_index
+
+    def _ret(df):
+        df.index.name = "date"
+        return df
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    cache = _load_index_cache()
+
+    if cache is not None and not cache.empty:
+        # ── 后续运行：增量拉取 ──
+        cached_max = cache.index.max()
+        fetch_start = (cached_max + timedelta(days=1)).strftime("%Y-%m-%d")
+        if fetch_start > today:
+            print(f"  指数缓存已是最新（{cached_max.date()}），跳过Wind请求")
+            return _ret(cache)
+        print(f"  指数缓存最新至 {cached_max.date()}，增量拉取 {fetch_start} ~ {today}")
+        new_df = _fetch_index_from_wind(fetch_start, today) if config.USE_WIND_API else None
+        if new_df is not None and not new_df.empty:
+            combined = pd.concat([cache, new_df])
+            combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+            _save_index_cache(combined)
+            print(f"  指数缓存已更新：共 {len(combined)} 天")
+            return _ret(combined)
+        else:
+            print("  Wind增量拉取失败，使用现有指数缓存")
+            return _ret(cache)
+    else:
+        # ── 首次运行：Excel(历史) + Wind(2026+) ──
+        print("  无指数缓存，首次构建：Excel历史 + Wind 2026+")
+        excel_df = _load_excel_index()  # index.name='date'，含全部历史
+
+        # 取 Excel 中 2026-01-01 之前的部分
+        cutoff = pd.to_datetime(_WIND_START_YEAR)
+        hist = excel_df[excel_df.index < cutoff].copy()
+
+        # 从 Wind 拉取 2026-01-01 ~ today
+        wind_df = None
+        if config.USE_WIND_API:
+            wind_df = _fetch_index_from_wind(_WIND_START_YEAR, today)
+
+        if wind_df is not None and not wind_df.empty:
+            combined = pd.concat([hist, wind_df])
+            combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+            _save_index_cache(combined)
+            print(f"  指数缓存已建立：共 {len(combined)} 天（Excel {len(hist)} 天 + Wind {len(wind_df)} 天）")
+            return _ret(combined)
+        else:
+            print("  Wind拉取失败，回退至纯Excel指数数据")
+            return _ret(excel_df)
+
+
 def load_index_data_with_fallback() -> pd.DataFrame:
-    """
-    加载指数数据，优先从Wind获取，失败时回退到本地Excel
-    """
-    # 尝试从Wind获取
-    if config.USE_WIND_API:
-        # 获取932006收盘价指数
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = "2024-01-01"  # 足够早的日期
-        df = get_index_data_from_wind("932006.CSI", start_date, end_date)
-        if df is not None and not df.empty:
-            df.columns = ["reits_index"]
-            # 尝试获取10Y国债、沪深300等
-            try:
-                tb_df = get_index_data_from_wind("H11017.CSI", start_date, end_date)
-                if tb_df is not None:
-                    df["tb10y"] = tb_df["close"]
-            except:
-                pass
-            try:
-                hs300_df = get_index_data_from_wind("000300.SH", start_date, end_date)
-                if hs300_df is not None:
-                    df["hs300"] = hs300_df["close"]
-            except:
-                pass
-            return df.sort_index()
-    # 回退到本地Excel
-    print("使用本地指数文件...")
-    from src.data_loader import load_index
-    return load_index()
+    """已废弃，保留兼容性。请使用 load_index_with_cache()"""
+    return load_index_with_cache()
 
 
 def _load_local_prices(codes: list) -> pd.DataFrame:
