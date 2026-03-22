@@ -65,6 +65,13 @@
 - **`use_container_width`**：Streamlit 已废弃，统一改为 `width='stretch'`
 - **parquet monthly 单位**：`performance_summary_monthly.parquet` 的 `nav_return`/`idx_return` 已是百分比值（如 4.807 = 4.807%），不可再乘 100
 
+### Dashboard 配色规范（2026-03-22 补充）
+- **主题隔离**：User(Cloud Blue) 与 Company(平安集团) 两套主题，bull/bear/pos/nav/idx 五类颜色独立定义
+- **User bull_color 必须用蓝系**：User 主题下 bull_color 若用绿色，视觉上与平安绿几乎相同，用户无法区分；固定用 `#1a6ca0`（钢蓝）
+- **气泡图/散点图多类别**：连续色阶会使数值相近的类别颜色重叠，多板块场景必须改用 `_bubble_palette`（分类色）逐个分配颜色
+- **面积填充透明度**：背景浅色主题下，fill opacity < 0.15 几乎不可见，推荐 0.18~0.25
+- **全局字体变量**：所有 legend/tickfont/title_font 统一引用 `_font9 = dict(size=11, color=text_color)`，一处修改全图同步；主题切换后该变量自动带入正确颜色
+
 ---
 
 ## 最佳实践
