@@ -39,6 +39,7 @@
 - **净资产**：日报表"净资产（市值）"列
 - **仓位比例**：持仓市值 / 净资产 × 100%
 - **⚠️ 子账户去重**：持仓 CSV 同一证券在多个子账户各有一行，必须先 `groupby(['date','code']).sum()` 文件内聚合，再跨文件 dedup；直接 `drop_duplicates(keep='last')` 丢失 ~63% 市值
+- **⚠️ 市值为零兜底**：持仓查询导出在无日内成交的日期不写入最新价，`本币持仓市值(col43)=0`；此时用 `当前成本(col34)` 兜底，确保无成交日也有持仓市值数据（覆盖年底/假期）
 - **历史/计算切换点**：`≤ 2026-03-06` 用 history data 仓位，`> 2026-03-06` 用持仓查询文件计算
 - **验算缓存**：每次运行重算重叠段（末5天）验证缓存正确性，差异 > 0.3% 触发全量重建
 
@@ -123,8 +124,9 @@
 | 文件 | 来源 | 用途 |
 |------|------|------|
 | `daily_master.parquet` | `save_merged_daily()` | 主表（净值/指数/仓位/交易），1213天 |
-| `allocation_bias_sector.parquet` | `save_allocation_bias()` | 板块配置偏移 |
-| `allocation_bias_detail.parquet` | `save_allocation_bias()` | 个券配置偏移 |
+| `allocation_bias_sector.parquet` | `save_allocation_bias()` | 板块配置偏移（最新截面） |
+| `allocation_bias_detail.parquet` | `save_allocation_bias()` | 个券配置偏移（最新截面） |
+| `allocation_bias_history.parquet` | `save_allocation_bias(history_df=...)` | 板块配置偏移历史时序（长表，2025-12-29起） |
 | `performance_summary_metrics.parquet` | `save_performance_summary()` | 总体指标（转置格式） |
 | `performance_summary_monthly.parquet` | `save_performance_summary()` | 分月表现 |
 
@@ -149,6 +151,11 @@
 ```bash
 streamlit run dashboard.py
 ```
+
+### Dashboard 架构规范（2026-03-25 更新）
+- **防腐层原则**：`dashboard.py` 只读预计算 parquet，禁止混入任何计算逻辑
+- **板块偏移历史**：`_bias_snapshot_at(target_date, history_df, fallback_df)` 从 `allocation_bias_history.parquet` 查找最近可用日截面（≤target_date），无历史时回退到最新快照
+- 图五期初/期末标题显示实际数据日期，当选择日期早于持仓数据起点时自动提示
 
 ### Dashboard 模块详细配置
 

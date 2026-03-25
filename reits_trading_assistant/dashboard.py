@@ -91,14 +91,18 @@ def load_all_data():
         prices_df = pd.read_csv(
             "data/processed/wind_prices_cache.csv", index_col=0, parse_dates=True
         )
-        holdings_df = pd.read_csv("data/processed/holdings.csv")
-        holdings_df["code"] = holdings_df["code"].astype(str).str.zfill(6)
-        return df.ffill(), perf_metrics, perf_monthly, bias_df, trades_df, info_df, prices_df, holdings_df
+        bias_history_df = None
+        try:
+            bias_history_df = pd.read_parquet("data/processed/allocation_bias_history.parquet")
+            bias_history_df["date"] = pd.to_datetime(bias_history_df["date"])
+        except Exception:
+            pass
+        return df.ffill(), perf_metrics, perf_monthly, bias_df, trades_df, info_df, prices_df, bias_history_df
     except Exception as e:
         st.error(f"❌ 数据源异常: {e}")
         st.stop()
 
-df, perf_metrics, perf_monthly, bias_df, trades_df, info_df, prices_df, holdings_df = load_all_data()
+df, perf_metrics, perf_monthly, bias_df, trades_df, info_df, prices_df, bias_history_df = load_all_data()
 
 # ================= 3. 时间轴控制 =================
 min_d, max_d = df.index.min().date(), df.index.max().date()
@@ -147,39 +151,17 @@ if not _anchor.empty:
     _alpha = (_nav_n - _idx_n) * 100
 
 
-def _sector_bias_at(at_date, holdings_df, prices_df, info_df, bias_df):
-    """
-    按价格还原：用当前持仓持份数 × at_date 价格，计算该日期近似板块配置偏移。
-    index_weight 沿用 bias_df 中的基准权重。
-    """
-    avail = prices_df.index[prices_df.index <= at_date]
-    if len(avail) == 0:
-        return bias_df.copy()
-    target_date = avail.max()
-    prices_t = prices_df.loc[target_date]
-    prices_latest = prices_df.loc[prices_df.index.max()]
-
-    h = holdings_df.copy()
-    def _scale(row):
-        p_now = prices_latest.get(row["code"], np.nan)
-        p_then = prices_t.get(row["code"], np.nan)
-        if pd.notna(p_now) and p_now > 0 and pd.notna(p_then):
-            return row["market_value"] * (p_then / p_now)
-        return row["market_value"]
-
-    h["scaled_mv"] = h.apply(_scale, axis=1)
-    merged = pd.merge(h, info_df[["code", "sector"]], on="code", how="left")
-    total = merged["scaled_mv"].sum()
-    if total == 0:
-        return bias_df.copy()
-
-    sector_w = merged.groupby("sector")["scaled_mv"].sum() / total
-    idx_w = bias_df.set_index("sector")["index_weight"]
-    result = pd.DataFrame({"account_weight": sector_w}).reset_index()
-    result.columns = ["sector", "account_weight"]
-    result["index_weight"] = result["sector"].map(idx_w).fillna(0)
-    result["weight_bias"] = result["account_weight"] - result["index_weight"]
-    return result
+def _bias_snapshot_at(target_date, history_df, fallback_df):
+    """从预计算历史中取离 target_date 最近的截面（≤target_date），无历史时回退到 fallback_df。"""
+    if history_df is None or history_df.empty:
+        return fallback_df.copy(), None
+    avail = sorted(history_df["date"].unique())
+    before = [d for d in avail if d <= target_date]
+    actual = max(before) if before else min(avail)
+    snap = history_df[history_df["date"] == actual][
+        ["sector", "account_weight", "index_weight", "weight_bias"]
+    ].copy()
+    return snap, actual
 
 
 def _fmt_pct(v, decimals=2):
@@ -380,9 +362,11 @@ st.markdown("<div style='margin-top:2.5rem'></div>", unsafe_allow_html=True)
 st.subheader("五、结构暴露检查：板块配置偏移 (ppt)")
 
 if not bias_df.empty:
-    # 计算期初/期末截面
-    bias_start = _sector_bias_at(_start_date, holdings_df, prices_df, info_df, bias_df)
-    bias_end   = bias_df.copy()  # 最新持仓即期末截面
+    # 从预计算历史截面取期初/期末
+    bias_start, start_actual = _bias_snapshot_at(_start_date, bias_history_df, bias_df)
+    bias_end,   end_actual   = _bias_snapshot_at(_end_date,   bias_history_df, bias_df)
+    start_label = start_actual.date() if start_actual is not None else _start_date.date()
+    end_label   = end_actual.date()   if end_actual   is not None else _end_date.date()
 
     # 统一排序（按期末偏移）
     sector_order = bias_end.sort_values("weight_bias")["sector"].tolist()
@@ -423,12 +407,12 @@ if not bias_df.empty:
     col_l, col_r = st.columns(2)
     with col_l:
         st.plotly_chart(
-            _bias_bar(bias_start, f"期初截面 ({_start_date.date()})"),
+            _bias_bar(bias_start, f"期初截面 ({start_label})"),
             width='stretch'
         )
     with col_r:
         st.plotly_chart(
-            _bias_bar(bias_end, f"期末截面 ({_end_date.date()})"),
+            _bias_bar(bias_end, f"期末截面 ({end_label})"),
             width='stretch'
         )
 

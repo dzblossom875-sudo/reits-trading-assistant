@@ -85,7 +85,59 @@ def calc_sector_allocation_bias(holdings_df: pd.DataFrame, weight_df: pd.DataFra
     return result.sort_values("weight_bias", ascending=False)
 
 
-def save_allocation_bias(detail_df: pd.DataFrame, sector_df: pd.DataFrame, output_dir: str):
+def calc_sector_bias_history(
+    holdings_raw: pd.DataFrame,
+    weight_df: pd.DataFrame,
+    reits_info: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    按日计算板块配置偏移历史时序。
+    holdings_raw: load_holdings_from_raw() 输出，含 date/code/market_value 列（每日每只券一行）
+    weight_df: 指数权重快照，含 code/weight 列
+    返回长表: [date, sector, account_weight, index_weight, weight_bias]
+    """
+    if holdings_raw is None or holdings_raw.empty or weight_df is None or reits_info is None:
+        return None
+    if "sector" not in reits_info.columns:
+        return None
+
+    code_sector = reits_info.set_index("code")["sector"].to_dict()
+    # 指数权重按板块汇总（固定快照）
+    idx_merged = weight_df.copy()
+    idx_merged["sector"] = idx_merged["code"].map(code_sector)
+    idx_sector = idx_merged.groupby("sector")["weight"].sum()
+
+    h = holdings_raw.copy()
+    h["sector"] = h["code"].map(code_sector)
+    h = h.dropna(subset=["sector"])
+
+    results = []
+    for dt, day_df in h.groupby("date"):
+        total_mv = day_df["market_value"].sum()
+        if total_mv == 0:
+            continue
+        acc_sector = day_df.groupby("sector")["market_value"].sum() / total_mv
+        all_sectors = set(acc_sector.index) | set(idx_sector.index)
+        for sector in all_sectors:
+            aw = float(acc_sector.get(sector, 0.0))
+            iw = float(idx_sector.get(sector, 0.0))
+            results.append({
+                "date": dt,
+                "sector": sector,
+                "account_weight": aw,
+                "index_weight": iw,
+                "weight_bias": aw - iw,
+            })
+
+    if not results:
+        return None
+    df = pd.DataFrame(results)
+    df["date"] = pd.to_datetime(df["date"])
+    return df.sort_values(["date", "sector"]).reset_index(drop=True)
+
+
+def save_allocation_bias(detail_df: pd.DataFrame, sector_df: pd.DataFrame, output_dir: str,
+                         history_df: pd.DataFrame = None):
     """保存配置偏移结果到Excel和固定路径Parquet"""
     if detail_df is None and sector_df is None:
         return None
@@ -130,5 +182,9 @@ def save_allocation_bias(detail_df: pd.DataFrame, sector_df: pd.DataFrame, outpu
         detail_parquet = detail_df.copy().ffill()
         detail_parquet_path = os.path.join(processed_dir, "allocation_bias_detail.parquet")
         detail_parquet.to_parquet(detail_parquet_path, index=False)
+
+    if history_df is not None and not history_df.empty:
+        history_parquet_path = os.path.join(processed_dir, "allocation_bias_history.parquet")
+        history_df.to_parquet(history_parquet_path, index=False)
 
     return out_path

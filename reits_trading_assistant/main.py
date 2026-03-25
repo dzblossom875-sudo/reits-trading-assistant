@@ -18,7 +18,7 @@ from src.sector_analysis import analyze_sector_trades, plot_sector_performance, 
 from src.trade_analysis import plot_trade_flow, plot_net_buy_vs_index, plot_sector_rotation, save_trade_summary, plot_position_vs_index, summarize_trades
 from src.timing_analysis import analyze_timing, plot_timing_chart, save_timing_result
 from src.performance_analysis import calc_metrics, plot_nav_vs_index, save_performance_summary, calc_metrics_by_period, save_daily_tracking, plot_position_change_vs_index
-from src.allocation_analysis import calc_allocation_bias, calc_sector_allocation_bias, save_allocation_bias
+from src.allocation_analysis import calc_allocation_bias, calc_sector_allocation_bias, save_allocation_bias, calc_sector_bias_history
 from src.wind_data_loader import load_reits_prices_with_fallback, load_index_data_with_fallback
 from src.report_generator import generate_report
 
@@ -206,7 +206,18 @@ def main():
             print("  板块偏移:")
             for _, row in bias_sector.iterrows():
                 print(f"    {row['sector']}: 账户{row['account_weight']:.2%} - 指数{row['index_weight']:.2%} = {row['weight_bias']:+.2%}")
-        save_allocation_bias(bias_detail, bias_sector, config.OUTPUT_DIR)
+
+        # 历史截面偏移（从原始持仓文件按日重算）
+        bias_history = None
+        if weight_df is not None and reits_info is not None:
+            from src.position_calculator import load_holdings_from_raw
+            holdings_raw = load_holdings_from_raw()
+            if holdings_raw is not None and not holdings_raw.empty:
+                bias_history = calc_sector_bias_history(holdings_raw, weight_df, reits_info)
+                if bias_history is not None:
+                    print(f"  历史截面偏移: {bias_history['date'].nunique()} 天")
+
+        save_allocation_bias(bias_detail, bias_sector, config.OUTPUT_DIR, history_df=bias_history)
         print("  已保存: allocation_bias.xlsx")
     else:
         print("  缺少持仓或权重数据，跳过配置偏移分析")

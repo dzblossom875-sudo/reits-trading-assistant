@@ -4,13 +4,13 @@
 
 ## 🔄 当前状态
 - **最后操作工具**：Claude Code
-- **最后操作**：分月业绩补全全历史 + load_holdings_timeseries 对齐新持仓模式
-- **最后 Commit**：`97e2d18`
+- **最后操作**：板块偏移历史时序 + 持仓市值兜底修复
+- **最后 Commit**：待提交（本次归档）
 - **待续事项**：
-  - [x] ~~分月业绩缺历史数据~~ ✅ calc_metrics_by_period 接收 full_df，42行覆盖2022-11起
-  - [x] ~~load_holdings_timeseries 未对齐~~ ✅ 委托 position_calculator，子账户聚合正确
-  - [ ] 板块配置偏移缺历史截面数据（需 history 截面数据 → parquet → dashboard）
-  - [ ] 确认架构边界：dashboard.py 不得混入计算逻辑
+  - [x] ~~分月业绩缺历史数据~~ ✅
+  - [x] ~~load_holdings_timeseries 未对齐~~ ✅
+  - [x] ~~板块配置偏移缺历史截面数据~~ ✅ allocation_bias_history.parquet，58天，2025-12-29起
+  - [x] ~~架构边界~~ ✅ dashboard.py 已清除计算逻辑，改用 _bias_snapshot_at() 读 parquet
   - [ ] output历史目录清理策略（可选）
 
 ## 📐 架构快照
@@ -138,6 +138,22 @@ raw/交易所成交.xlsx  ──┘
   - 多版本持仓文件并存时以文件 mtime 为准，勿混用旧表
   - 零值填充与真实空仓需结合业务核对
 - **Commit**：`7e9c03a`
+
+### 2026-03-25 (晚) - Claude Code
+
+#### [架构重构] 板块配置偏移历史时序
+- **模块**：`src/allocation_analysis.py`, `dashboard.py`, `main.py`
+- **逻辑变更**：
+  - 新增 `calc_sector_bias_history()` 按日重算板块截面偏移，输出长表存 `allocation_bias_history.parquet`
+  - 删除 dashboard 内 `_sector_bias_at()`（价格还原近似算法），改用 `_bias_snapshot_at()` 精确查 parquet
+  - 图五期初/期末标题显示实际数据日期
+- **Commit**：待提交
+
+#### [持仓市值兜底] market_value=0 用成本兜底
+- **模块**：`src/position_calculator.py`
+- **逻辑变更**：`load_holdings_from_raw()` 同时读 col34（当前成本），mv=0 时用成本替代；持仓时序从 19天→58天，历史截面从 2026-02-06→2025-12-29
+- **避坑指南**：持仓查询导出在无日内成交的日期不写最新价→市值列为 0，不能仅过滤掉，需用成本兜底
+- **Commit**：待提交
 
 ### 2026-03-25 (下午) - Claude Code
 

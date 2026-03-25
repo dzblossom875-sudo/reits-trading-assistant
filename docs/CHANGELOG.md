@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-03-25 (晚) - Claude Code
+
+**工具**：Claude Code
+
+### 板块配置偏移历史时序 + 持仓市值兜底修复
+
+#### 架构重构：`_sector_bias_at()` 移出 dashboard (`dashboard.py`, `src/allocation_analysis.py`, `main.py`)
+- **feat**: `calc_sector_bias_history(holdings_raw, weight_df, reits_info)` 新增函数（`allocation_analysis.py`）
+  - 按日循环原始持仓明细，计算每日板块配置权重 vs 指数权重
+  - 输出长表：`[date, sector, account_weight, index_weight, weight_bias]`
+  - 指数权重使用当前快照（固定），账户权重逐日精确计算
+- **feat**: `save_allocation_bias()` 新增 `history_df=None` 参数，若传入则保存 `allocation_bias_history.parquet`
+- **feat**: `main.py` Step 7 新增调用 `load_holdings_from_raw()` + `calc_sector_bias_history()`，历史截面偏移自动写入 parquet
+- **refactor**: `dashboard.py` 删除 `_sector_bias_at()`（价格还原近似算法），替换为 `_bias_snapshot_at()`（从预计算 parquet 精确查找最近日截面）
+  - Fig 5 期初/期末标题显示实际数据日期（而非选择日期），用户知晓数据边界
+  - 若 parquet 不存在则回退到最新快照（向后兼容）
+  - `load_all_data()` 返回 `bias_history_df` 替代 `holdings_df`（后者仅用于已删除的 `_sector_bias_at()`）
+
+#### 持仓市值兜底修复 (`src/position_calculator.py`)
+- **fix**: `load_holdings_from_raw()` 同时读取 col 34（`当前成本(元)`）
+  - 当 `本币持仓市值(元)=0`（年底/假期无最新价），用成本值兜底
+  - 根因：持仓查询导出在无日内成交的日期不写入最新价，导致市值列为 0
+  - 效果：持仓时序从 19天 扩展到 58天（2025-12-29 ~ 2026-03-25）
+  - 历史截面偏移从 2026-02-06 提前到 2025-12-29（覆盖去年底）
+- **fix**: 验算失败提示 `:.0%` → `:.1%`（`0.003` 不再显示为 `0%`）
+
+---
+
 ## 2026-03-25 (下午) - `97e2d18`
 
 **工具**：Claude Code

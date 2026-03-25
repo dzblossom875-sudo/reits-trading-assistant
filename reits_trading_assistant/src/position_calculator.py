@@ -86,12 +86,12 @@ def load_holdings_from_raw() -> Optional[pd.DataFrame]:
             else:
                 df = pd.read_csv(filepath, header=None, dtype=str, encoding='utf-8')
 
-            # 列映射（0-indexed）: A=0日期, L=11代码, AR=43市值
-            col_map = {0: "date", 11: "code", 43: "market_value"}
+            # 列映射（0-indexed）: A=0日期, L=11代码, AR=43市值, AI=34成本
+            col_map = {0: "date", 11: "code", 43: "market_value", 34: "cost_mv"}
             df = df.rename(columns=col_map)
 
-            keep_cols = [c for c in ["date", "code", "market_value"] if c in df.columns]
-            if not keep_cols:
+            keep_cols = [c for c in ["date", "code", "market_value", "cost_mv"] if c in df.columns]
+            if "date" not in keep_cols or "code" not in keep_cols:
                 print(f"  ⚠️ {os.path.basename(filepath)} 缺少必要列，跳过")
                 continue
 
@@ -101,6 +101,11 @@ def load_holdings_from_raw() -> Optional[pd.DataFrame]:
 
             from src.utils import clean_number, clean_code
             df["market_value"] = df["market_value"].apply(clean_number)
+            # market_value=0 时用当前成本兜底（年底/假期等无最新价的日期）
+            if "cost_mv" in df.columns:
+                df["cost_mv"] = df["cost_mv"].apply(clean_number)
+                mask_zero = df["market_value"] == 0
+                df.loc[mask_zero, "market_value"] = df.loc[mask_zero, "cost_mv"]
             df = df[df["market_value"] > 0]
 
             df["code"] = df["code"].apply(clean_code)
@@ -307,7 +312,7 @@ def build_position_timeseries(
                     result_parts.append(updated)
 
                 else:
-                    print(f"  ⚠️ 验算失败：最大差异 {max_diff:.2%} > {_VALIDATION_TOLERANCE:.0%}")
+                    print(f"  ⚠️ 验算失败：最大差异 {max_diff:.2%} > {_VALIDATION_TOLERANCE:.1%}")
                     print("  🔄 全量重建缓存...")
                     if use_cache:
                         save_position_cache(all_calc)
