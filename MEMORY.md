@@ -5,7 +5,7 @@
 ## 🔄 当前状态
 - **最后操作工具**：Claude Code
 - **最后操作**：板块偏移历史时序 + 持仓市值兜底修复
-- **最后 Commit**：待提交（本次归档）
+- **最后 Commit**：`46b9dd7`
 - **待续事项**：
   - [x] ~~分月业绩缺历史数据~~ ✅
   - [x] ~~load_holdings_timeseries 未对齐~~ ✅
@@ -147,13 +147,13 @@ raw/交易所成交.xlsx  ──┘
   - 新增 `calc_sector_bias_history()` 按日重算板块截面偏移，输出长表存 `allocation_bias_history.parquet`
   - 删除 dashboard 内 `_sector_bias_at()`（价格还原近似算法），改用 `_bias_snapshot_at()` 精确查 parquet
   - 图五期初/期末标题显示实际数据日期
-- **Commit**：待提交
+- **Commit**：`46b9dd7`
 
 #### [持仓市值兜底] market_value=0 用成本兜底
 - **模块**：`src/position_calculator.py`
 - **逻辑变更**：`load_holdings_from_raw()` 同时读 col34（当前成本），mv=0 时用成本替代；持仓时序从 19天→58天，历史截面从 2026-02-06→2025-12-29
 - **避坑指南**：持仓查询导出在无日内成交的日期不写最新价→市值列为 0，不能仅过滤掉，需用成本兜底
-- **Commit**：待提交
+- **Commit**：`46b9dd7`
 
 ### 2026-03-25 (下午) - Claude Code
 
@@ -194,4 +194,4 @@ raw/交易所成交.xlsx  ──┘
 
 ---
 
-*最后更新：2026-03-25*
+*最后更新：2026-03-25 晚*
