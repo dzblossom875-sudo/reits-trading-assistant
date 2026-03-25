@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-03-25 (下午) - `97e2d18`
+
+**工具**：Claude Code
+
+### 分月业绩补全全历史 + load_holdings_timeseries 对齐
+
+#### 分月业绩 (`src/performance_analysis.py`)
+- **feat**: `calc_metrics_by_period(full_df=None)` 新增可选参数
+- 若传入 `full_df`（含 `nav_norm_full`/`reits_index_norm_full`），自动使用全历史数据计算分月收益（从 2022-11 起，共 42 行；原来只有 4 行）
+- 无 `full_df` 时回退到原有 `daily_df["nav"]` 行为（BASE_DATE 之后），向后兼容
+- **fix**: `main.py` 传入 `full_df=full_df`
+
+#### 持仓时序 (`src/data_loader.py`)
+- **fix**: `load_holdings_timeseries` 重写为委托 `position_calculator.load_holdings_from_raw`
+- 支持 xlsx+csv 混合来源（历史 CSV + 当日 xlsx）
+- 子账户正确聚合（`groupby.sum()`），3/9 市值从 14,969万 → 40,782万
+
+---
+
 ## 2026-03-25 - `da79896`
 
 **工具**：Claude Code

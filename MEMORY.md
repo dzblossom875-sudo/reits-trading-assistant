@@ -4,12 +4,13 @@
 
 ## 🔄 当前状态
 - **最后操作工具**：Claude Code
-- **最后操作**：仓位计算全面修复 — position_calculator v2.1，删除错误缓存，实现验算驱动增量缓存
-- **最后 Commit**：`da79896`
+- **最后操作**：分月业绩补全全历史 + load_holdings_timeseries 对齐新持仓模式
+- **最后 Commit**：`97e2d18`
 - **待续事项**：
-  - [ ] 分月业绩缺历史数据：重新从完整历史计算分月收益
-  - [ ] 板块配置偏移缺历史截面数据
-  - [ ] 持仓/交易文件已改为历史CSV+当日xlsx模式，data_loader.py 的 `load_holdings_timeseries` 仍用旧 xlsx 路径，需对齐
+  - [x] ~~分月业绩缺历史数据~~ ✅ calc_metrics_by_period 接收 full_df，42行覆盖2022-11起
+  - [x] ~~load_holdings_timeseries 未对齐~~ ✅ 委托 position_calculator，子账户聚合正确
+  - [ ] 板块配置偏移缺历史截面数据（需 history 截面数据 → parquet → dashboard）
+  - [ ] 确认架构边界：dashboard.py 不得混入计算逻辑
   - [ ] output历史目录清理策略（可选）
 
 ## 📐 架构快照
@@ -137,6 +138,18 @@ raw/交易所成交.xlsx  ──┘
   - 多版本持仓文件并存时以文件 mtime 为准，勿混用旧表
   - 零值填充与真实空仓需结合业务核对
 - **Commit**：`7e9c03a`
+
+### 2026-03-25 (下午) - Claude Code
+
+#### [分月业绩] calc_metrics_by_period 支持全历史
+- **模块**：`src/performance_analysis.py`, `main.py`
+- **逻辑变更**：新增 `full_df` 参数，传入 `nav_norm_full`/`reits_index_norm_full` 即可覆盖 2022-11 起全历史分月（42行→原来4行）；无 full_df 时回退原有行为
+- **Commit**：`97e2d18`
+
+#### [持仓时序] load_holdings_timeseries 对齐新模式
+- **模块**：`src/data_loader.py`
+- **逻辑变更**：委托 `position_calculator.load_holdings_from_raw`，支持 xlsx+csv 混合、子账户聚合；3/9 市值 14969万→40782万
+- **Commit**：`97e2d18`
 
 ### 2026-03-25 - Claude Code
 
