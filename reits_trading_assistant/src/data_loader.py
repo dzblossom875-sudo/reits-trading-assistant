@@ -300,30 +300,31 @@ def load_holdings():
 def load_holdings_timeseries():
     """
     读取持仓查询文件全部日期，返回日频持仓市值汇总
-    用于仓位计算
+    v2.1: 委托 position_calculator.load_holdings_from_raw 读取，
+          支持 xlsx+csv 混合来源，并正确处理子账户多行聚合。
     """
-    files = glob.glob(os.path.join(config.DATA_RAW_DIR, config.FILE_HOLDINGS))
-    if not files:
+    try:
+        from src.position_calculator import load_holdings_from_raw
+    except ImportError:
+        print("⚠️ 无法导入 position_calculator，load_holdings_timeseries 返回 None")
         return None
-    filepath = max(files, key=os.path.getmtime)
-    df = pd.read_excel(filepath, sheet_name=config.SHEET_HOLDINGS, header=None, dtype=str)
-    col_map = {0: "date", 11: "code", 43: "market_value"}
-    df = df.rename(columns=col_map)
-    keep = [c for c in ["date", "code", "market_value"] if c in df.columns]
-    if not keep:
+
+    holdings = load_holdings_from_raw()
+    if holdings is None or holdings.empty:
         return None
-    df = df[keep].copy()
-    df["date"] = df["date"].apply(parse_date)
-    df = df[df["date"].notna()]
-    df["market_value"] = df["market_value"].apply(clean_number)
-    df = df[df["market_value"] >= 0]  # 过滤负数
-    # 按日汇总持仓市值
-    daily_mv = df.groupby("date")["market_value"].sum().reset_index()
-    daily_mv = daily_mv.sort_values("date").set_index("date")
-    # 部分导出在缺行时日内合计为 0；0 视为缺失，沿用上一有效持仓总市值（真清仓需源文件显式非零后归零）
-    mv = daily_mv["market_value"].replace(0, np.nan).ffill()
-    daily_mv["market_value"] = mv.fillna(0)
-    return daily_mv
+
+    # 按日汇总（已在 load_holdings_from_raw 内完成子账户聚合，这里直接按日求和）
+    daily_mv = (
+        holdings.groupby("date")["market_value"]
+        .sum()
+        .rename("market_value")
+        .sort_index()
+    )
+    daily_mv.index = pd.to_datetime(daily_mv.index)
+
+    # 零值视为缺失，前向填充（真实清仓需源文件体现减仓轨迹）
+    mv = daily_mv.replace(0, np.nan).ffill().fillna(0)
+    return pd.DataFrame({"market_value": mv})
 
 
 def load_index_weight_932006():
@@ -401,11 +402,20 @@ def load_history_data() -> pd.DataFrame:
 
 
 def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
-                      base_date=None, holdings_daily=None) -> tuple:
+                      base_date=None, holdings_daily=None,
+                      holdings_df=None, trades_df=None, prices_df=None) -> tuple:
     """
     以 base_date（默认 config.BASE_DATE = 2025-12-31）为对齐点，合并历史与计算数据：
     - base_date 及之前：使用 history_df（2022-11-24 基准）
     - base_date 之后：使用 daily_df rescaled 到历史基准
+
+    参数:
+        daily_df: 日频数据（指数、净值等）
+        history_df: 历史数据
+        base_date: 对齐基准日
+        holdings_daily: 日频持仓市值（备用）
+        trades_df: 交易明细（用于新仓位计算方式）
+        prices_df: 个股收盘价（用于新仓位计算方式）
 
     返回:
         full_df  : index=date，列包含以下所有（与 history data.xlsx 同构）：
@@ -466,29 +476,50 @@ def build_full_series(daily_df: pd.DataFrame, history_df: pd.DataFrame,
     if "reits_index" in calc_post.columns:
         calc_post["reits_index_abs"] = calc_post["reits_index"].round(4)
 
-    # 仓位：≤ POSITION_CUTOFF 用 history_df，之后用测算（持仓市值/净资产）
+    # 仓位：≤ POSITION_CUTOFF 用 history_df，之后用持仓查询文件数据
     calc_post["position_pct"] = np.nan
-    if holdings_daily is not None and "net_assets" in calc_post.columns:
+
+    # 使用新的 v2.0 仓位计算（基于持仓查询文件）
+    from src.position_calculator import build_position_timeseries
+
+    print("\n  [仓位计算] 使用持仓查询文件方式 v2.0...")
+
+    # 准备净资产数据
+    net_assets_df = calc_post[['net_assets']].copy() if 'net_assets' in calc_post.columns else None
+
+    if net_assets_df is not None:
+        position_result = build_position_timeseries(
+            history_df=history_df,
+            net_assets_df=net_assets_df,
+            position_cutoff="2026-03-06",
+            use_cache=True
+        )
+
+        if not position_result.empty:
+            # 合并计算段的结果
+            calc_post["position_pct"] = position_result["position_pct"].reindex(calc_post.index)
+            calc_post["position_change"] = position_result["position_change"].reindex(calc_post.index)
+            print("  ✅ 仓位计算完成（来自持仓查询文件）")
+        else:
+            print("  ⚠️ 新方式计算失败，回退到原有方式...")
+
+    # 回退逻辑：如果新方式没有计算出仓位，使用旧的 holdings_daily 方式
+    if calc_post["position_pct"].isna().all() and holdings_daily is not None and "net_assets" in calc_post.columns:
+        print("  [仓位计算] 回退到 holdings_daily 方式...")
         hd = holdings_daily.copy()
         hd.index = pd.to_datetime(hd.index)
         calc_post["position_pct"] = (
             hd["market_value"].reindex(calc_post.index).ffill()
             / calc_post["net_assets"]
         ).round(4)
-    # 覆盖 ≤ POSITION_CUTOFF 部分为 history_df 数据
-    if "position_pct" in history_df.columns:
-        mask = calc_post.index <= POSITION_CUTOFF
-        if mask.any():
-            hist_pos = history_df["position_pct"].reindex(calc_post.index[mask])
-            calc_post.loc[mask, "position_pct"] = hist_pos.values
 
-    # 仓位变动：以历史最后一日为锚点做差分
-    last_hist_pos = float(hist_pre_all["position_pct"].iloc[-1]) if "position_pct" in hist_pre_all.columns else np.nan
-    pos_with_anchor = pd.concat([
-        pd.Series([last_hist_pos], index=[base_date]),
-        calc_post["position_pct"],
-    ])
-    calc_post["position_change"] = pos_with_anchor.diff().iloc[1:].round(4)
+        # 计算仓位变动
+        last_hist_pos = float(hist_pre_all["position_pct"].iloc[-1]) if "position_pct" in hist_pre_all.columns else np.nan
+        pos_with_anchor = pd.concat([
+            pd.Series([last_hist_pos], index=[base_date]),
+            calc_post["position_pct"],
+        ])
+        calc_post["position_change"] = pos_with_anchor.diff().iloc[1:].round(4)
 
     calc_keep = [c for c in ["net_assets_wan", "reits_index_abs",
                               "reits_index_norm_full", "nav_norm_full",

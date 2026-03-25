@@ -113,40 +113,58 @@ def calc_metrics(nav_df: pd.DataFrame, index_df: pd.DataFrame, base_date=None) -
     return metrics
 
 
-def calc_metrics_by_period(daily_df: pd.DataFrame) -> pd.DataFrame:
+def calc_metrics_by_period(
+    daily_df: pd.DataFrame,
+    full_df: pd.DataFrame = None,
+) -> pd.DataFrame:
     """
     按自然月计算指标：基准日至今、各自然月
     逻辑：每月收益 = (本月末净值 / 上月末净值 - 1) * 100
-    注：若上月末无数据，则用该月第一个交易日的净值
+
+    若提供 full_df（含 nav_norm_full / reits_index_norm_full），则覆盖全历史；
+    否则回退到 daily_df["nav"]（仅 BASE_DATE 之后）。
+    归一化序列和绝对净值计算月收益率结果相同（比值运算，与基准点无关）。
     """
-    df = daily_df.copy()
-    df.index = pd.to_datetime(df.index)
     base_date = pd.to_datetime(config.BASE_DATE)
 
-    # 筛选基准日之后的数据
-    df = df[df.index >= base_date].sort_index()
+    # ── 选择数据源 ──
+    if full_df is not None and "nav_norm_full" in full_df.columns:
+        df = full_df[["nav_norm_full", "reits_index_norm_full"]].copy()
+        df.index = pd.to_datetime(df.index)
+        df = df.rename(columns={"nav_norm_full": "nav", "reits_index_norm_full": "reits_index"})
+        df = df.sort_index()
+        source = "full_df (全历史)"
+    else:
+        df = daily_df.copy()
+        df.index = pd.to_datetime(df.index)
+        df = df[df.index >= base_date].sort_index()
+        source = "daily_df (基准日后)"
+
+    print(f"  [分月业绩] 使用 {source}，{df.index.min().date()} ~ {df.index.max().date()}")
 
     results = []
 
-    # 基准日至今
-    nav_series = df["nav"].dropna() if "nav" in df.columns else pd.Series(dtype=float)
-    idx_series = df["reits_index"].dropna() if "reits_index" in df.columns else pd.Series(dtype=float)
+    # ── 基准日至今汇总行 ──
+    df_since = df[df.index >= base_date]
+    nav_since = df_since["nav"].dropna()   if "nav"         in df_since.columns else pd.Series(dtype=float)
+    idx_since = df_since["reits_index"].dropna() if "reits_index" in df_since.columns else pd.Series(dtype=float)
 
-    if not nav_series.empty and len(nav_series) > 1:
+    if not nav_since.empty and len(nav_since) > 1:
         results.append({
-            "period": f"{base_date.strftime('%Y-%m-%d')}至今",
-            "start_date": nav_series.index[0].strftime('%Y-%m-%d'),
-            "end_date": nav_series.index[-1].strftime('%Y-%m-%d'),
-            "nav_return": (nav_series.iloc[-1] / nav_series.iloc[0] - 1) * 100,
-            "idx_return": (idx_series.iloc[-1] / idx_series.iloc[0] - 1) * 100 if not idx_series.empty else np.nan,
-            "excess": ((nav_series.iloc[-1] / nav_series.iloc[0]) - (idx_series.iloc[-1] / idx_series.iloc[0])) * 100 if not idx_series.empty else np.nan,
+            "period":     f"{base_date.strftime('%Y-%m-%d')}至今",
+            "start_date": nav_since.index[0].strftime('%Y-%m-%d'),
+            "end_date":   nav_since.index[-1].strftime('%Y-%m-%d'),
+            "nav_return": (nav_since.iloc[-1] / nav_since.iloc[0] - 1) * 100,
+            "idx_return": (idx_since.iloc[-1] / idx_since.iloc[0] - 1) * 100 if not idx_since.empty else np.nan,
+            "excess":     ((nav_since.iloc[-1] / nav_since.iloc[0]) -
+                           (idx_since.iloc[-1] / idx_since.iloc[0])) * 100
+                          if not idx_since.empty else np.nan,
         })
 
-    # 按自然月计算：用上个月最后一天的净值作为基准
+    # ── 按自然月：用上月末值作为起点 ──
     df["year_month"] = df.index.to_period("M")
     all_periods = sorted(df["year_month"].unique())
 
-    # 获取每个period最后一天的数据点
     prev_nav_val = None
     prev_idx_val = None
 
@@ -155,49 +173,46 @@ def calc_metrics_by_period(daily_df: pd.DataFrame) -> pd.DataFrame:
         nav_m = group["nav"].dropna()
         idx_m = group["reits_index"].dropna()
 
-        if not nav_m.empty:
-            nav_end = nav_m.iloc[-1]  # 本月末净值
-            nav_end_date = nav_m.index[-1]
+        if nav_m.empty:
+            continue
 
-            if i == 0 or prev_nav_val is None:
-                # 第一个月：用该月第一个数据点作为起点（如果基准日在该月内）
-                nav_start = nav_m.iloc[0]
-                start_date = nav_m.index[0]
-            else:
-                # 非首月：用上月末净值作为起点
-                nav_start = prev_nav_val
-                start_date = nav_m.index[0]
+        nav_end      = nav_m.iloc[-1]
+        nav_end_date = nav_m.index[-1]
 
-            # 计算本月收益率
-            nav_ret = (nav_end / nav_start - 1) * 100 if nav_start != 0 else np.nan
+        if i == 0 or prev_nav_val is None:
+            nav_start  = nav_m.iloc[0]
+            start_date = nav_m.index[0]
+        else:
+            nav_start  = prev_nav_val
+            start_date = nav_m.index[0]
 
-            # 指数同理
-            idx_ret = np.nan
-            if not idx_m.empty:
-                idx_end = idx_m.iloc[-1]
-                if i == 0 or prev_idx_val is None:
-                    idx_start = idx_m.iloc[0]
-                else:
-                    idx_start = prev_idx_val
-                idx_ret = (idx_end / idx_start - 1) * 100 if idx_start != 0 else np.nan
+        nav_ret = (nav_end / nav_start - 1) * 100 if nav_start != 0 else np.nan
 
-            # 跳过单日月份（如 2025-12-31 至 2025-12-31）
-            if start_date.strftime('%Y-%m-%d') == nav_end_date.strftime('%Y-%m-%d'):
-                continue
+        idx_ret = np.nan
+        if not idx_m.empty:
+            idx_end = idx_m.iloc[-1]
+            idx_start = idx_m.iloc[0] if (i == 0 or prev_idx_val is None) else prev_idx_val
+            idx_ret = (idx_end / idx_start - 1) * 100 if idx_start != 0 else np.nan
 
-            results.append({
-                "period": str(ym),
-                "start_date": start_date.strftime('%Y-%m-%d'),
-                "end_date": nav_end_date.strftime('%Y-%m-%d'),
-                "nav_return": nav_ret,
-                "idx_return": idx_ret,
-                "excess": nav_ret - idx_ret if not np.isnan(idx_ret) else nav_ret,
-            })
-
-            # 保存本月末值给下月使用
+        # 跳过单日月份（如 2025-12-31）
+        if start_date.strftime('%Y-%m-%d') == nav_end_date.strftime('%Y-%m-%d'):
             prev_nav_val = nav_end
             if not idx_m.empty:
                 prev_idx_val = idx_m.iloc[-1]
+            continue
+
+        results.append({
+            "period":     str(ym),
+            "start_date": start_date.strftime('%Y-%m-%d'),
+            "end_date":   nav_end_date.strftime('%Y-%m-%d'),
+            "nav_return": nav_ret,
+            "idx_return": idx_ret,
+            "excess":     nav_ret - idx_ret if not np.isnan(idx_ret) else nav_ret,
+        })
+
+        prev_nav_val = nav_end
+        if not idx_m.empty:
+            prev_idx_val = idx_m.iloc[-1]
 
     return pd.DataFrame(results)
 

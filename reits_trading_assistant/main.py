@@ -57,12 +57,22 @@ def main():
     # Step 1b: 历史数据加载、对齐、2026+差异验证
     print("\n[1b/7] 历史数据加载与对齐...")
     history_df = load_history_data()
+
+    # 提前获取个股收盘价（用于仓位计算）
+    reits_prices = None
+    if config.USE_WIND_API and reits_info is not None and "code" in reits_info.columns:
+        print("  获取个股收盘价用于仓位计算...")
+        codes = reits_info["code"].tolist()
+        reits_prices = load_reits_prices_with_fallback(codes)
+        if reits_prices is not None:
+            print(f"    ✅ 收盘价数据: {reits_prices.shape}")
+
     full_df, scale_factors = (None, {})
     if history_df is not None:
         full_df, scale_factors = build_full_series(
             daily_df, history_df,
             base_date=pd.to_datetime(config.BASE_DATE),
-            holdings_daily=holdings_daily,
+            holdings_daily=holdings_daily,  # 保留备用（回退）
         )
         # 2026+ 差异验证（仅打印摘要，不保存文件）
         validate_history_vs_calc(
@@ -70,10 +80,12 @@ def main():
             base_date=pd.to_datetime(config.BASE_DATE),
         )
 
-    # Step 2: 尝试从Wind获取行情数据
-    print("\n[2/7] 获取行情数据...")
-    reits_prices = None
-    if config.USE_WIND_API:
+    # Step 2: 尝试从Wind获取行情数据（用于板块分析）
+    print("\n[2/7] 获取行情数据用于板块分析...")
+    # 如果前面已获取，直接复用
+    if reits_prices is not None:
+        print(f"  复用已获取的Wind数据: {reits_prices.shape}")
+    elif config.USE_WIND_API:
         print("  尝试从Wind API获取个股行情...")
         codes = reits_info["code"].tolist() if "code" in reits_info.columns else []
         reits_prices = load_reits_prices_with_fallback(codes)
@@ -164,8 +176,8 @@ def main():
     if "base_date" in metrics:
         print(f"  计算基准日：{metrics['base_date']}")
 
-    # 计算分月指标
-    period_df = calc_metrics_by_period(daily_df)
+    # 计算分月指标（优先使用 full_df 覆盖全历史，回退到 daily_df）
+    period_df = calc_metrics_by_period(daily_df, full_df=full_df)
     save_performance_summary(metrics, period_df)
     print("  已保存: performance_summary.xlsx")
 
