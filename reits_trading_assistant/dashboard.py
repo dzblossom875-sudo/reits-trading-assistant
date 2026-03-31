@@ -111,12 +111,17 @@ default_start = max(pd.to_datetime("2024-02-08").date(), min_d)
 # --- 图一独立控件（放最上方）---
 st.sidebar.header("📈 图一：核心趋势")
 fig1_base = st.sidebar.date_input(
-    "基准日选择",
+    "起始日（归一化基准日）",
     value=default_start,
     key="fig1_base",
     help="图表从此日起展示，净值/指数同时归一到 1.0",
 )
-fig1_start = fig1_base  # 起始日与基准日保持一致
+fig1_end = st.sidebar.date_input(
+    "终止日",
+    value=max_d,
+    key="fig1_end",
+    help="图表展示到此日为止，留空则显示到最新",
+)
 
 # --- 图二~六共用控件 ---
 st.sidebar.header("📊 图二~六：区间分析")
@@ -126,11 +131,11 @@ end_date = st.sidebar.date_input("结束日", value=max_d, key="main_end")
 # ================= 4. 预计算图一归一化（指标卡依赖此结果）=================
 # date_input 清空时返回 None，需用默认值兜底
 _fig1_base  = pd.to_datetime(fig1_base) if fig1_base else pd.to_datetime(default_start)
-_fig1_start = _fig1_base  # 起始日与基准日保持一致
+_fig1_end   = pd.to_datetime(fig1_end)  if fig1_end  else pd.to_datetime(max_d)
 _start_date = pd.to_datetime(start_date) if start_date else pd.to_datetime(default_start)
 _end_date   = pd.to_datetime(end_date)   if end_date   else pd.to_datetime(max_d)
 
-df_p1 = df[df.index >= _fig1_start].copy()
+df_p1 = df[(df.index >= _fig1_base) & (df.index <= _fig1_end)].copy()
 # 图二~六共用窗口
 df_p = df[(df.index >= _start_date) & (df.index <= _end_date)].copy()
 
@@ -189,7 +194,7 @@ st.title("REITs二级策略跟踪")
 if _nav_n is not None and len(_nav_n) >= 2:
     nm = _calc_metrics(_nav_n)
     im = _calc_metrics(_idx_n) if _idx_n is not None else {}
-    label_period = f"{fig1_base} ~ {_nav_n.index[-1].date()}"
+    label_period = f"{fig1_base} ~ {_nav_n.index[-1].date()}" + ("" if not fig1_end or fig1_end >= max_d else f"（截至{fig1_end}）")
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         delta = f"指数 {_fmt_pct(im.get('total'))}" if im else None
@@ -236,7 +241,7 @@ if not df_p1.empty and "nav_n" in df_p1.columns:
         margin=dict(l=10, r=60, t=30, b=60),
         legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5,
                     font=_font9),
-        uirevision=str(_fig1_base),
+        uirevision=f"{_fig1_base}_{_fig1_end}",
         xaxis=dict(tickfont=_font9),
         yaxis=dict(title="归一化净值 / 指数", showgrid=True, gridcolor=grid_color,
                    tickfont=_font9, title_font=_font9),

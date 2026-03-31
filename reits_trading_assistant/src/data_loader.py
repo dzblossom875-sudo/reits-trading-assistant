@@ -217,18 +217,17 @@ def load_holdings():
     filepath = max(files, key=os.path.getmtime)
     print(f"📖 读取持仓查询：{os.path.basename(filepath)}")
     
-    # 读取 Excel（无表头）
-    df = pd.read_excel(filepath, sheet_name=config.SHEET_HOLDINGS, header=None, dtype=str)
-    
-    # 列映射（0-indexed）
-    # A=0, L=11, P=15, AR=43
-    col_map = {
-        0: "date",        # A 列：日期
-        11: "code",       # L 列：证券代码
-        15: "weight",     # P 列：权重
-        43: "market_value",  # AR 列：市值
+    # 读取 Excel（第0行为表头）
+    df = pd.read_excel(filepath, sheet_name=config.SHEET_HOLDINGS, header=0, dtype=str)
+
+    # 按列名映射（防止列位置漂移）
+    name_map = {
+        "业务日期": "date",
+        "证券代码": "code",
+        "本币持仓市值/产品净资产(%)": "weight",
+        "本币持仓市值(元)": "market_value",
     }
-    df = df.rename(columns=col_map)
+    df = df.rename(columns={k: v for k, v in name_map.items() if k in df.columns})
     
     # 保留关键列
     keep_cols = [c for c in ["date", "code", "weight", "market_value"] if c in df.columns]

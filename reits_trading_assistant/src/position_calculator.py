@@ -82,13 +82,18 @@ def load_holdings_from_raw() -> Optional[pd.DataFrame]:
     for filepath, ftype in all_files:
         try:
             if ftype == 'xlsx':
-                df = pd.read_excel(filepath, sheet_name=config.SHEET_HOLDINGS, header=None, dtype=str)
+                df = pd.read_excel(filepath, sheet_name=config.SHEET_HOLDINGS, header=0, dtype=str)
             else:
-                df = pd.read_csv(filepath, header=None, dtype=str, encoding='utf-8')
+                df = pd.read_csv(filepath, header=0, dtype=str, encoding='utf-8')
 
-            # 列映射（0-indexed）: A=0日期, L=11代码, AR=43市值, AI=34成本
-            col_map = {0: "date", 11: "code", 43: "market_value", 34: "cost_mv"}
-            df = df.rename(columns=col_map)
+            # 按列名映射（防止列位置因文件版本差异漂移）
+            name_map = {
+                "业务日期": "date",
+                "证券代码": "code",
+                "本币持仓市值(元)": "market_value",
+                "当前成本(元)": "cost_mv",
+            }
+            df = df.rename(columns={k: v for k, v in name_map.items() if k in df.columns})
 
             keep_cols = [c for c in ["date", "code", "market_value", "cost_mv"] if c in df.columns]
             if "date" not in keep_cols or "code" not in keep_cols:
